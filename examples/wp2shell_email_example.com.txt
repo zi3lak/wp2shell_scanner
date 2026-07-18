@@ -1,4 +1,4 @@
-To: soc@cyberssl.co.uk
+To: ops@cyberssl.co.uk
 Subject: [ACTION REQUIRED] wp2shell scan — example.com — VULNERABLE
 
 Team,

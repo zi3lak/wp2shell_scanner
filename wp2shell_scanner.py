@@ -69,7 +69,7 @@ except ImportError:  # pragma: no cover
 
 TOOL_NAME = "CSSLTD wp2shell-scanner"
 TOOL_VERSION = "1.0"
-CSSLTD_CONTACT = "soc@cyberssl.co.uk"          # <-- edit to your intake address
+CSSLTD_CONTACT = "ops@cyberssl.co.uk"          # <-- edit to your intake address
 CSSLTD_SITE = "https://cyberssl.co.uk"
 USER_AGENT = f"CSSLTD-wp2shell-scanner/{TOOL_VERSION} (+{CSSLTD_SITE})"
 

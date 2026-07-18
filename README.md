@@ -116,7 +116,7 @@ without it.
 ### Configuration
 
 The notification e-mail recipient is the `CSSLTD_CONTACT` constant near the top of the
-script (default `soc@cyberssl.co.uk`). Edit it to your own intake address.
+script (default `ops@cyberssl.co.uk`). Edit it to your own intake address.
 
 ---
 
