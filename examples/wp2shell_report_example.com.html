@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wp2shell exposure — example.com</title>
+<style>
+:root{
+  --ink:#0E1116; --ink-2:#3A424E; --muted:#6B7480; --line:#E2E6EB;
+  --bg:#FFFFFF; --panel:#F6F8FA; --crit:#C81E3A; --ok:#1B7F4B;
+  --warn:#B7791F; --slate:#4A5568; --brand:#12203A;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--panel);color:var(--ink);font-family:var(--sans);
+  line-height:1.55;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:900px;margin:0 auto;padding:32px 20px 64px;}
+.sheet{background:var(--bg);border:1px solid var(--line);border-radius:4px;overflow:hidden;}
+header.masthead{display:flex;justify-content:space-between;align-items:flex-start;
+  gap:24px;padding:24px 32px;border-bottom:2px solid var(--brand);}
+.brand{font-family:var(--mono);font-weight:700;letter-spacing:.14em;
+  font-size:13px;color:var(--brand);text-transform:uppercase;}
+.brand small{display:block;letter-spacing:.05em;color:var(--muted);font-weight:400;
+  text-transform:none;margin-top:4px;font-size:11px;}
+.doc-meta{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;}
+.doc-meta b{color:var(--ink-2);}
+h1.title{font-size:22px;margin:28px 32px 4px;letter-spacing:-.01em;}
+.subtitle{margin:0 32px 24px;color:var(--muted);font-size:14px;}
+.verdict{margin:0 32px 8px;border-left:5px solid var(--slate);
+  background:var(--panel);padding:18px 20px;border-radius:0 4px 4px 0;}
+.verdict .flag{font-family:var(--mono);font-weight:700;font-size:15px;letter-spacing:.04em;}
+.verdict .row{display:flex;flex-wrap:wrap;gap:22px;margin-top:10px;font-size:13px;}
+.verdict .row div span{display:block;color:var(--muted);font-size:11px;
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;}
+.verdict .row div b{font-family:var(--mono);font-size:14px;}
+section{margin:28px 32px;}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-2);
+  border-bottom:1px solid var(--line);padding-bottom:6px;margin:0 0 14px;}
+.finding{border:1px solid var(--line);border-radius:4px;margin-bottom:14px;}
+.finding .head{display:flex;justify-content:space-between;align-items:center;
+  gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);}
+.finding .cve{font-family:var(--mono);font-weight:700;font-size:14px;}
+.finding .cve small{display:block;font-weight:400;color:var(--muted);
+  font-size:12px;margin-top:2px;}
+.badge{font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 9px;
+  border-radius:99px;color:#fff;white-space:nowrap;letter-spacing:.03em;}
+.finding table{width:100%;border-collapse:collapse;font-size:13px;}
+.finding td{padding:8px 16px;vertical-align:top;border-top:1px solid var(--line);}
+.finding td.k{width:150px;color:var(--muted);text-transform:uppercase;
+  font-size:11px;letter-spacing:.05em;padding-top:10px;}
+.finding td.v{font-family:var(--mono);font-size:12.5px;color:var(--ink);}
+.evidence{width:100%;border-collapse:collapse;font-size:13px;}
+.evidence th,.evidence td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);}
+.evidence th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+.evidence td.mono{font-family:var(--mono);font-size:12px;}
+ol.steps{margin:0;padding:0;counter-reset:step;list-style:none;}
+ol.steps li{position:relative;padding:0 0 16px 44px;margin:0;}
+ol.steps li:before{counter-increment:step;content:counter(step,decimal-leading-zero);
+  position:absolute;left:0;top:-2px;font-family:var(--mono);font-weight:700;
+  font-size:13px;color:var(--crit);border:1px solid var(--line);border-radius:4px;
+  width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:var(--panel);}
+ol.steps li b{display:block;margin-bottom:2px;}
+ol.steps li p{margin:0;color:var(--ink-2);font-size:13.5px;}
+code{font-family:var(--mono);background:var(--panel);border:1px solid var(--line);
+  border-radius:3px;padding:1px 5px;font-size:12px;}
+.notes{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+  padding:14px 16px;font-size:13.5px;color:var(--ink-2);}
+.refs{font-size:13px;}
+.refs a{color:var(--brand);text-decoration:none;border-bottom:1px solid var(--line);}
+.refs li{margin-bottom:6px;}
+footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
+  color:var(--muted);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+.confidential{font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;}
+@media (max-width:640px){
+  header.masthead{flex-direction:column;gap:10px;}
+  .doc-meta{text-align:left;} h1.title,.subtitle,.verdict,section,footer.foot{margin-left:18px;margin-right:18px;}
+}
+@media print{
+  body{background:#fff;} .wrap{padding:0;} .sheet{border:none;border-radius:0;}
+  .finding,.notes,.evidence,ol.steps li:before{break-inside:avoid;}
+}
+</style></head>
+<body><div class="wrap"><div class="sheet">
+<div style="background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;font-family:var(--mono);font-size:11px;padding:6px 12px;text-align:center;letter-spacing:.06em;">SAMPLE OUTPUT — SYNTHETIC DATA, NOT A REAL SCAN</div>
+<header class="masthead">
+  <div class="brand">CyberSentinel Solutions Ltd<small>Offensive Security · Vulnerability Assessment</small></div>
+  <div class="doc-meta">
+    Report: <b>wp2shell exposure</b><br>
+    Target: <b>example.com</b><br>
+    Scanned: <b>2026-07-18 17:41:36 UTC</b><br>
+    Tool: <b>CSSLTD wp2shell-scanner v1.0</b>
+  </div>
+</header>
+
+<h1 class="title">WordPress wp2shell exposure assessment</h1>
+<p class="subtitle">Pre-authentication RCE chain — CVE-2026-63030 + CVE-2026-60137</p>
+
+<div class="verdict" style="border-left-color:#C81E3A">
+  <div class="flag" style="color:#C81E3A">Vulnerable — patch immediately</div>
+  
+      <div class="row">
+        <div><span>Detected core</span><b>WordPress 7.0.1</b></div>
+        <div><span>Affected range</span><b>6.9.0–6.9.4 · 7.0.0–7.0.1</b></div>
+        <div><span>Fixed in</span><b>6.9.5 · 7.0.2</b></div>
+        <div><span>REST batch endpoint</span><b>yes</b></div>
+      </div>
+</div>
+
+<section>
+  <h2>Findings</h2>
+  
+        <div class="finding">
+          <div class="head">
+            <div class="cve">CVE-2026-63030<small>wp2shell — REST API batch-route confusion</small></div>
+            <div class="badge" style="background:#C81E3A">VULNERABLE</div>
+          </div>
+          <table>
+            <tr><td class="k">Role in chain</td><td class="v" style="white-space:normal">Entry point of the chain. A route-confusion flaw in the REST batch endpoint lets an unauthenticated request reach an internal query path.</td></tr>
+            <tr><td class="k">Component</td><td class="v">WP_REST_Server::serve_batch_request_v1()  ·  /wp-json/batch/v1</td></tr>
+            <tr><td class="k">Weakness</td><td class="v">CWE-436 (Interpretation Conflict)</td></tr>
+            <tr><td class="k">CVSS</td><td class="v">7.5</td></tr>
+            <tr><td class="k">Severity</td><td class="v">Critical</td></tr>
+            <tr><td class="k">Advisory</td><td class="v">GHSA-ff9f-jf42-662q</td></tr>
+          </table>
+        </div>
+        <div class="finding">
+          <div class="head">
+            <div class="cve">CVE-2026-60137<small>author__not_in WP_Query SQL injection</small></div>
+            <div class="badge" style="background:#C81E3A">VULNERABLE</div>
+          </div>
+          <table>
+            <tr><td class="k">Role in chain</td><td class="v" style="white-space:normal">Second link. Unsanitised input in author__not_in reaches the database query; combined with CVE-2026-63030 this produces unauthenticated remote code execution.</td></tr>
+            <tr><td class="k">Component</td><td class="v">WP_Query — author__not_in parameter</td></tr>
+            <tr><td class="k">Weakness</td><td class="v">CWE-89 (SQL Injection)</td></tr>
+            <tr><td class="k">CVSS</td><td class="v">chained (no standalone score published)</td></tr>
+            <tr><td class="k">Severity</td><td class="v">Critical (as part of the chain)</td></tr>
+            <tr><td class="k">Advisory</td><td class="v">—</td></tr>
+          </table>
+        </div>
+</section>
+
+<section>
+  <h2>Detection evidence</h2>
+  <table class="evidence">
+    <tr><th>Source</th><th>Observation</th><th>Version</th></tr>
+    <tr><td>generator meta tag (homepage)</td><td class='mono'>meta generator = &quot;WordPress 7.0.1&quot;</td><td class='mono'>7.0.1</td></tr><tr><td>/readme.html</td><td class='mono'>Version 7.0.1</td><td class='mono'>7.0.1</td></tr><tr><td>/wp-json/ (REST root)</td><td class='mono'>batch/v1 namespace is registered (REST batch endpoint reachable)</td><td class='mono'>—</td></tr>
+  </table>
+</section>
+
+<section><h2>Analyst notes</h2><div class="notes"><p style='margin:0 0 8px'>• Detected version falls inside a vulnerable range. Treat any internet-facing instance that ran this version as potentially compromised — patching closes the route but does not remove a backdoor planted beforehand.</p></div></section>
+
+<section>
+  <h2>Remediation</h2>
+  
+      <ol class="steps">
+        <li><b>Take a verified backup first.</b>
+            <p>Back up the database and the full file tree before making changes, so you can restore and later forensically compare.</p></li>
+        <li><b>Update WordPress Core.</b>
+            <p>Move to a fixed release — <code>6.9.5</code> · <code>7.0.2</code> or later on the matching branch. Then confirm with <code>wp core version</code> or <b>Dashboard → Updates</b>.</p></li>
+        <li><b>Confirm the site still works.</b>
+            <p>Verify the public site and admin load correctly after the update; check for plugin/theme conflicts.</p></li>
+        <li><b>Assume compromise if it was exposed while vulnerable.</b>
+            <p>The patch closes the route but does not remove a backdoor planted beforehand. Inspect themes, plugins, <code>uploads/</code>, <code>wp-config.php</code>, scheduled tasks (wp-cron), and the admin user list for persistence, and run file-integrity checks against known-good core.</p></li>
+        <li><b>Add defence-in-depth at the edge.</b>
+            <p>Where immediate patching isn't possible, deploy WAF rules to block malicious REST batch requests and SQL-injection patterns, restrict access to <code>/wp-json/batch/v1</code>, and monitor REST API logs. Managed WAFs shipped rules for this chain on 17 Jul 2026.</p></li>
+        <li><b>Rotate secrets if compromise is suspected.</b>
+            <p>Regenerate the <code>wp-config.php</code> auth salts, reset admin and database passwords, and rotate any API keys stored on the host.</p></li>
+        <li><b>Re-scan to confirm.</b>
+            <p>Run this scanner again; the verdict should read <b>Patched</b> and the version should sit at or above the fixed release.</p></li>
+      </ol>
+</section>
+
+<section class="refs">
+  <h2>References</h2>
+  <ul><li><a href="https://github.com/advisories/GHSA-ff9f-jf42-662q">WordPress GitHub Security Advisory (GHSA-ff9f-jf42-662q)</a></li><li><a href="https://www.rapid7.com/blog/post/etr-cve-2026-63030-wp2shell-a-critical-remote-code-execution-vulnerability-in-wordpress-core/">Rapid7 — ETR: CVE-2026-63030 wp2shell</a></li><li><a href="https://socradar.io/blog/wp2shell-wordpress-rce-cve-2026-63030/">SOCRadar — wp2shell WordPress RCE</a></li><li><a href="https://wp2shell.com/">Official checker (Assetnote / Searchlight Cyber)</a></li><li><a href="https://wordpress.org/download/releases/">WordPress releases 6.9.5 / 7.0.2</a></li></ul>
+</section>
+
+<footer class="foot">
+  <span class="confidential">Confidential — client engagement</span>
+  <span>Generated by CSSLTD wp2shell-scanner v1.0 · Detection-only, non-intrusive</span>
+</footer>
+</div></div></body></html>

@@ -1,0 +1,16 @@
+# Real scan output — never publish live-target results
+wp2shell_reports/
+
+# Local timestamped copies (synthetic demo lives in examples/)
+wp2shell_report_*_2*.html
+wp2shell_email_*_2*.txt
+wp2shell_*_2*.json
+
+# Bundles / archives
+*.zip
+
+# Editor / tooling
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
