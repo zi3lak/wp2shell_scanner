@@ -1,0 +1,40 @@
+name: smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  demo:
+    name: --demo smoke test (no network)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependency
+        run: pip install requests
+
+      - name: Byte-compile the scanner
+        run: python -m py_compile wp2shell_scanner.py
+
+      - name: Run synthetic demo (offline)
+        run: python3 wp2shell_scanner.py --demo -o ./ci_reports
+
+      - name: Assert report artefacts were produced
+        run: |
+          test -n "$(ls ci_reports/*.html 2>/dev/null)" || { echo "no HTML report"; exit 1; }
+          test -n "$(ls ci_reports/*.json 2>/dev/null)" || { echo "no JSON record"; exit 1; }
+          test -n "$(ls ci_reports/*.txt  2>/dev/null)" || { echo "no email draft"; exit 1; }
+          echo "demo produced HTML + JSON + email — OK"
+
+      - name: Upload demo output
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-reports
+          path: ci_reports/

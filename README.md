@@ -1,5 +1,11 @@
 # wp2shell_scanner
 
+[![smoke](https://github.com/zi3lak/wp2shell_scanner/actions/workflows/smoke.yml/badge.svg)](https://github.com/zi3lak/wp2shell_scanner/actions/workflows/smoke.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](LICENSE)
+[![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-blue.svg)](https://www.python.org/)
+[![Mode: detection-only](https://img.shields.io/badge/mode-detection--only-brightgreen.svg)](#what-it-explicitly-does-not-do)
+[![CVE-2026-63030 · CVE-2026-60137](https://img.shields.io/badge/CVE-2026--63030%20%C2%B7%202026--60137-C81E3A.svg)](https://github.com/advisories/GHSA-ff9f-jf42-662q)
+
 **Non-intrusive detection scanner for the WordPress `wp2shell` pre-authentication RCE chain.**
 
 `wp2shell_scanner.py` fingerprints a WordPress site's core version and reads its
