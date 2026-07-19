@@ -57,17 +57,20 @@ duplicate a commercial vulnerability database.
 
 ## What the scanner does
 
-- **Passive version fingerprint** via several independent vectors:
+- **Passive WordPress fingerprinting across four public version vectors:**
   - `<meta name="generator">` on the homepage
   - `/readme.html`
   - RSS / Atom feed `<generator>` tag
   - `/wp-links-opml.php` (OPML)
-  - REST root `/wp-json/`
-- **Passive REST-surface read** of `/wp-json/` to check whether the `batch/v1`
-  namespace is registered (i.e. the vulnerable endpoint is reachable). **No batch
-  request and no payload are sent** — it only reads the advertised route list.
-- **Verdict mapping** — the detected version is compared against the affected/fixed
-  ranges to produce a per-CVE verdict, plus:
+- **Cross-checks the vectors.** If they disagree on the version, or a **pre-release**
+  build (beta/RC/alpha) is seen, the verdict is forced to **UNKNOWN** — the scanner
+  never reports a possibly-false *Patched* from conflicting evidence.
+- **REST API surface discovery** — reads `/wp-json/` to see whether WordPress
+  **advertises** the `batch/v1` namespace in its REST index. This confirms the
+  namespace is *registered*, **not** that the endpoint is reachable through a WAF.
+  **No batch request and no payload are sent.**
+- **Per-CVE verdict** — the detected version is classified **independently against
+  each tracked CVE** (branch-aware), plus outputs:
   - a **client-ready HTML report** (print → PDF),
   - a **JSON record** (pipeline/EAV-friendly),
   - a **draft notification e-mail**.
@@ -139,7 +142,7 @@ script (default `ops@cyberssl.co.uk`). Edit it to your own intake address.
 | `VULNERABLE` | Detected version falls inside an affected range — patch immediately |
 | `PATCHED` | On a fixed release; not exposed to this chain |
 | `NOT_AFFECTED` | Version predates the flaw (< 6.9.0) |
-| `UNKNOWN` | Version could not be confirmed — verify manually |
+| `UNKNOWN` | Version could not be confirmed, vectors disagreed, or a pre-release build was seen — verify manually |
 | `NOT_WORDPRESS` | No WordPress fingerprint found |
 
 ---

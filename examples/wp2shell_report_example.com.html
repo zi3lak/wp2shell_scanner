@@ -86,8 +86,8 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
   <div class="doc-meta">
     Report: <b>WordPress core exposure</b><br>
     Target: <b>example.com</b><br>
-    Scanned: <b>2026-07-19 02:50:59 UTC</b><br>
-    Tool: <b>CSSLTD WordPress core-vuln scanner v2.0</b>
+    Scanned: <b>2026-07-19 03:04:52 UTC</b><br>
+    Tool: <b>CSSLTD WordPress core-vuln scanner v2.1</b>
   </div>
 </header>
 
@@ -101,7 +101,7 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
         <div><span>Detected core</span><b>WordPress 6.9.1</b></div>
         <div><span>CVEs flagged</span><b>3 of 3 tracked</b></div>
         <div><span>wp2shell RCE chain</span><b>exposed</b></div>
-        <div><span>REST batch endpoint</span><b>yes</b></div>
+        <div><span>batch/v1 namespace</span><b>advertised</b></div>
       </div>
 </div>
 
@@ -118,7 +118,7 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
             <tr><td class="k">Component</td><td class="v">WP_REST_Server::serve_batch_request_v1()  ·  /wp-json/batch/v1</td></tr>
             <tr><td class="k">Weakness</td><td class="v">CWE-436 (Interpretation Conflict)</td></tr>
             <tr><td class="k">Access</td><td class="v">Unauthenticated</td></tr>
-            <tr><td class="k">Severity</td><td class="v">Critical (CVSS see advisory)</td></tr>
+            <tr><td class="k">Severity</td><td class="v">Critical (CVSS 9.8 (WPScan CNA) / 7.5 (CISA-ADP))</td></tr>
             <tr><td class="k">Affected</td><td class="v">6.9.0–6.9.4 · 7.0.0–7.0.1</td></tr>
             <tr><td class="k">Fixed in</td><td class="v">6.9.5 / 7.0.2</td></tr>
             <tr><td class="k">Advisory</td><td class="v">GHSA-ff9f-jf42-662q</td></tr>
@@ -162,7 +162,7 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
   <h2>Detection evidence</h2>
   <table class="evidence">
     <tr><th>Source</th><th>Observation</th><th>Version</th></tr>
-    <tr><td>generator meta tag (homepage)</td><td class='mono'>meta generator = &quot;WordPress 6.9.1&quot;</td><td class='mono'>6.9.1</td></tr><tr><td>/readme.html</td><td class='mono'>Version 6.9.1</td><td class='mono'>6.9.1</td></tr><tr><td>/wp-json/ (REST root)</td><td class='mono'>batch/v1 namespace is registered (REST batch endpoint reachable)</td><td class='mono'>—</td></tr>
+    <tr><td>generator meta tag (homepage)</td><td class='mono'>meta generator = &quot;WordPress 6.9.1&quot;</td><td class='mono'>6.9.1</td></tr><tr><td>/readme.html</td><td class='mono'>Version 6.9.1</td><td class='mono'>6.9.1</td></tr><tr><td>/wp-json/ (REST index)</td><td class='mono'>batch/v1 namespace advertised in the REST index (registered; reachability through any WAF not tested)</td><td class='mono'>—</td></tr>
   </table>
 </section>
 
@@ -191,11 +191,11 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
 
 <section class="refs">
   <h2>References</h2>
-  <ul><li><a href="https://github.com/advisories/GHSA-ff9f-jf42-662q">WordPress GitHub Security Advisory — wp2shell (GHSA-ff9f-jf42-662q)</a></li><li><a href="https://github.com/advisories/GHSA-6x83-fcf5-r65g">WordPress GitHub Security Advisory — Notes REST API (GHSA-6x83-fcf5-r65g)</a></li><li><a href="https://nvd.nist.gov/vuln/detail/CVE-2026-3906">NVD — CVE-2026-3906</a></li><li><a href="https://www.rapid7.com/blog/post/etr-cve-2026-63030-wp2shell-a-critical-remote-code-execution-vulnerability-in-wordpress-core/">Rapid7 — ETR: CVE-2026-63030 wp2shell</a></li><li><a href="https://www.vulncheck.com/blog/wp2shell">VulnCheck — WP2Shell (CVE-2026-63030 &amp; CVE-2026-60137)</a></li><li><a href="https://socradar.io/blog/wp2shell-wordpress-rce-cve-2026-63030/">SOCRadar — wp2shell WordPress RCE</a></li><li><a href="https://wordpress.org/download/releases/">WordPress releases (6.8.6 / 6.9.4 / 6.9.5 / 7.0.2)</a></li></ul>
+  <ul><li><a href="https://github.com/advisories/GHSA-ff9f-jf42-662q">WordPress GitHub Security Advisory — wp2shell (GHSA-ff9f-jf42-662q)</a></li><li><a href="https://github.com/advisories/GHSA-6x83-fcf5-r65g">WordPress GitHub Security Advisory — Notes REST API (GHSA-6x83-fcf5-r65g)</a></li><li><a href="https://nvd.nist.gov/vuln/detail/CVE-2026-63030">NVD — CVE-2026-63030 (scores: 9.8 WPScan CNA / 7.5 CISA-ADP)</a></li><li><a href="https://nvd.nist.gov/vuln/detail/CVE-2026-3906">NVD — CVE-2026-3906</a></li><li><a href="https://www.rapid7.com/blog/post/etr-cve-2026-63030-wp2shell-a-critical-remote-code-execution-vulnerability-in-wordpress-core/">Rapid7 — ETR: CVE-2026-63030 wp2shell</a></li><li><a href="https://www.vulncheck.com/blog/wp2shell">VulnCheck — WP2Shell (CVE-2026-63030 &amp; CVE-2026-60137)</a></li><li><a href="https://socradar.io/blog/wp2shell-wordpress-rce-cve-2026-63030/">SOCRadar — wp2shell WordPress RCE</a></li><li><a href="https://wordpress.org/download/releases/">WordPress releases (6.8.6 / 6.9.4 / 6.9.5 / 7.0.2)</a></li></ul>
 </section>
 
 <footer class="foot">
   <span class="confidential">Confidential — client engagement</span>
-  <span>Generated by CSSLTD WordPress core-vuln scanner v2.0 · Detection-only, non-intrusive</span>
+  <span>Generated by CSSLTD WordPress core-vuln scanner v2.1 · Detection-only, non-intrusive</span>
 </footer>
 </div></div></body></html>

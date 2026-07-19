@@ -1,11 +1,16 @@
 {
   "target": "https://example.com/",
-  "scanned_at": "2026-07-19T02:50:59.674959+00:00",
-  "tool": "CSSLTD WordPress core-vuln scanner v2.0",
+  "scanned_at": "2026-07-19T03:04:52.700106+00:00",
+  "tool": "CSSLTD WordPress core-vuln scanner v2.1",
   "is_wordpress": true,
   "detected_version": "6.9.1",
+  "detected_versions": [
+    "6.9.1"
+  ],
+  "version_conflict": false,
+  "prerelease": false,
   "verdict": "VULNERABLE",
-  "batch_endpoint_exposed": true,
+  "batch_namespace_advertised": true,
   "chain_rce": true,
   "vulnerable_cves": [
     "CVE-2026-63030",
@@ -17,7 +22,7 @@
       "title": "wp2shell \u2014 REST API batch-route confusion \u2192 RCE",
       "cwe": "CWE-436 (Interpretation Conflict)",
       "component": "WP_REST_Server::serve_batch_request_v1()  \u00b7  /wp-json/batch/v1",
-      "cvss": "see advisory",
+      "cvss": "9.8 (WPScan CNA) / 7.5 (CISA-ADP)",
       "severity": "Critical",
       "advisory": "GHSA-ff9f-jf42-662q",
       "auth": "Unauthenticated",
@@ -65,8 +70,8 @@
       "version": "6.9.1"
     },
     {
-      "source": "/wp-json/ (REST root)",
-      "detail": "batch/v1 namespace is registered (REST batch endpoint reachable)",
+      "source": "/wp-json/ (REST index)",
+      "detail": "batch/v1 namespace advertised in the REST index (registered; reachability through any WAF not tested)",
       "version": null
     }
   ],

@@ -23,6 +23,9 @@ jobs:
       - name: Byte-compile the scanner
         run: python -m py_compile wp2shell_scanner.py
 
+      - name: Detection-logic tests (offline, simulated hosts)
+        run: python3 tests/test_detection.py
+
       - name: Run synthetic demo (offline)
         run: python3 wp2shell_scanner.py --demo -o ./ci_reports
 

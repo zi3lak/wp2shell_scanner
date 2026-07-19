@@ -21,10 +21,13 @@ Patchstack catalogue) need a live curated feed and per-plugin enumeration and
 are intentionally out of scope for this static core-version scanner.
 
 WHAT THIS TOOL DOES
-    * Fingerprints the WordPress core version through several passive vectors
-      (generator meta tag, readme.html, RSS/Atom feed, OPML, REST root).
-    * Reads the site's advertised REST API surface (/wp-json/) to see whether
-      the batch endpoint namespace (batch/v1) is registered.
+    * Fingerprints the WordPress core version through four passive version
+      vectors (generator meta tag, readme.html, RSS/Atom feed, OPML), and
+      cross-checks them: disagreeing vectors or a pre-release build force an
+      UNKNOWN verdict rather than a possibly-false PATCHED.
+    * Performs REST API surface discovery by reading /wp-json/ to see whether
+      WordPress *advertises* the batch/v1 namespace. This does NOT confirm the
+      endpoint is reachable through a WAF — only that it is registered.
     * Classifies each tracked CVE independently against the detected version
       and produces a verdict, a client-ready HTML remediation report, a JSON
       record, and a draft notification e-mail to CSSLTD.
@@ -75,7 +78,7 @@ except ImportError:  # pragma: no cover
 # --------------------------------------------------------------------------- #
 
 TOOL_NAME = "CSSLTD WordPress core-vuln scanner"
-TOOL_VERSION = "2.0"
+TOOL_VERSION = "2.1"
 CSSLTD_CONTACT = "ops@cyberssl.co.uk"          # <-- edit to your intake address
 CSSLTD_SITE = "https://cyberssl.co.uk"
 USER_AGENT = f"CSSLTD-wp-core-scanner/{TOOL_VERSION} (+{CSSLTD_SITE})"
@@ -103,7 +106,7 @@ VULN_DB = {
         "title": "wp2shell — REST API batch-route confusion → RCE",
         "cwe": "CWE-436 (Interpretation Conflict)",
         "component": "WP_REST_Server::serve_batch_request_v1()  ·  /wp-json/batch/v1",
-        "cvss": "see advisory",
+        "cvss": "9.8 (WPScan CNA) / 7.5 (CISA-ADP)",
         "severity": "Critical",
         "advisory": "GHSA-ff9f-jf42-662q",
         "auth": "Unauthenticated",
@@ -162,6 +165,8 @@ REFERENCES = [
      "https://github.com/advisories/GHSA-ff9f-jf42-662q"),
     ("WordPress GitHub Security Advisory — Notes REST API (GHSA-6x83-fcf5-r65g)",
      "https://github.com/advisories/GHSA-6x83-fcf5-r65g"),
+    ("NVD — CVE-2026-63030 (scores: 9.8 WPScan CNA / 7.5 CISA-ADP)",
+     "https://nvd.nist.gov/vuln/detail/CVE-2026-63030"),
     ("NVD — CVE-2026-3906",
      "https://nvd.nist.gov/vuln/detail/CVE-2026-3906"),
     ("Rapid7 — ETR: CVE-2026-63030 wp2shell",
@@ -202,11 +207,19 @@ VERDICT_LABEL = {
 #  Version handling                                                           #
 # --------------------------------------------------------------------------- #
 
-_VER_RE = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
+# Capture the numeric version plus any pre-release suffix (-beta1, -RC2, -alpha…).
+_VER_RE = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?([-+][0-9A-Za-z.]+)?")
+_PRERELEASE_RE = re.compile(r"(?:beta|rc|alpha|dev|nightly|[-+])", re.IGNORECASE)
 
 
 def parse_version(text: str):
-    """Return (major, minor, patch) tuple from a version-like string, or None."""
+    """Return (major, minor, patch) tuple from a version-like string, or None.
+
+    Note: the numeric tuple deliberately drops any pre-release suffix; callers
+    must consult is_prerelease() separately, because a pre-release (e.g.
+    7.1-beta1) is NOT the same release as its final (7.1) and cannot be mapped
+    to a fixed-version verdict reliably.
+    """
     if not text:
         return None
     m = _VER_RE.search(text)
@@ -214,6 +227,21 @@ def parse_version(text: str):
         return None
     major, minor, patch = m.group(1), m.group(2), m.group(3)
     return (int(major), int(minor), int(patch) if patch is not None else 0)
+
+
+def is_prerelease(text: str) -> bool:
+    """True if the version string carries a beta/RC/alpha/dev suffix."""
+    if not text:
+        return False
+    # Ignore the plain numeric core; look only at what follows it.
+    m = _VER_RE.search(text)
+    if not m:
+        return False
+    suffix = text[m.start():]
+    # Strip the leading numeric dotted core, then test the remainder.
+    core = re.match(r"\d+\.\d+(?:\.\d+)?", suffix)
+    rest = suffix[core.end():] if core else suffix
+    return bool(_PRERELEASE_RE.search(rest))
 
 
 def version_str(v) -> str:
@@ -303,10 +331,11 @@ def detect_from_html(session, base, timeout, evidence):
         return None
     body = r.text or ""
     # <meta name="generator" content="WordPress 6.9.4" />
-    m = re.search(r'name=["\']generator["\']\s+content=["\']WordPress\s*([\d.]+)',
+    _v = r"([\d.]+(?:[-+][0-9A-Za-z.]+)?)"
+    m = re.search(r'name=["\']generator["\']\s+content=["\']WordPress\s*' + _v,
                   body, re.IGNORECASE)
     if not m:
-        m = re.search(r'content=["\']WordPress\s*([\d.]+)["\']\s+name=["\']generator',
+        m = re.search(r'content=["\']WordPress\s*' + _v + r'["\']\s+name=["\']generator',
                       body, re.IGNORECASE)
     is_wp = ("wp-content" in body) or ("wp-includes" in body) or ("/wp-json" in body)
     if m:
@@ -326,7 +355,8 @@ def detect_from_readme(session, base, timeout, evidence):
     r = _get(session, url, timeout)
     if isinstance(r, Exception) or not getattr(r, "ok", False):
         return None
-    m = re.search(r"Version\s*([\d.]+)", r.text or "", re.IGNORECASE)
+    m = re.search(r"Version\s*([\d.]+(?:[-+][0-9A-Za-z.]+)?)",
+                  r.text or "", re.IGNORECASE)
     if m:
         ver = m.group(1)
         evidence.append(Evidence("/readme.html", f"Version {ver}", ver))
@@ -340,7 +370,8 @@ def detect_from_feed(session, base, timeout, evidence):
         r = _get(session, url, timeout)
         if isinstance(r, Exception) or not getattr(r, "ok", False):
             continue
-        m = re.search(r"<generator>\s*https?://wordpress\.org/\?v=([\d.]+)",
+        m = re.search(r"<generator>\s*https?://wordpress\.org/\?v="
+                      r"([\d.]+(?:[-+][0-9A-Za-z.]+)?)",
                       r.text or "", re.IGNORECASE)
         if m:
             ver = m.group(1)
@@ -354,7 +385,8 @@ def detect_from_opml(session, base, timeout, evidence):
     r = _get(session, url, timeout)
     if isinstance(r, Exception) or not getattr(r, "ok", False):
         return None
-    m = re.search(r"generator=\"WordPress/([\d.]+)\"", r.text or "", re.IGNORECASE)
+    m = re.search(r"generator=\"WordPress/([\d.]+(?:[-+][0-9A-Za-z.]+)?)\"",
+                  r.text or "", re.IGNORECASE)
     if m:
         ver = m.group(1)
         evidence.append(Evidence("/wp-links-opml.php", f"WordPress/{ver}", ver))
@@ -365,32 +397,46 @@ def detect_from_opml(session, base, timeout, evidence):
 def probe_rest_surface(session, base, timeout, evidence):
     """
     Passive read of /wp-json/. Returns dict:
-        { 'is_wp': bool, 'version': tuple|None, 'batch_endpoint': bool }
-    Only reads the advertised route/namespace list; sends no batch request.
+        { 'is_wp': bool, 'batch_advertised': bool }
+
+    Only reads the advertised route/namespace list; it sends no batch request
+    and does NOT confirm the endpoint is actually reachable through any WAF —
+    it only observes whether WordPress advertises the batch/v1 namespace.
+
+    is_wp is set only when the response is a WordPress-shaped REST index (a JSON
+    object carrying 'namespaces'/'routes', or a 'wp/v2' route). A bare 200/401/
+    403 is NOT treated as proof of WordPress, to avoid false positives on
+    unrelated hosts.
     """
-    result = {"is_wp": False, "version": None, "batch_endpoint": False}
+    result = {"is_wp": False, "batch_advertised": False}
     url = urljoin(base, "wp-json/")
     r = _get(session, url, timeout)
     if isinstance(r, Exception) or r is None:
         return result
-    if getattr(r, "status_code", None) in (200, 401, 403):
-        result["is_wp"] = True
     try:
         data = r.json()
     except Exception:
         return result
-    if isinstance(data, dict):
-        result["is_wp"] = True
-        namespaces = data.get("namespaces") or []
-        routes = data.get("routes") or {}
-        if "batch/v1" in namespaces or "/batch/v1" in routes:
-            result["batch_endpoint"] = True
-            evidence.append(Evidence("/wp-json/ (REST root)",
-                                     "batch/v1 namespace is registered "
-                                     "(REST batch endpoint reachable)"))
-        # Some installs leak version in the description/home fields; check gently.
-        for key in ("description", "gmt_offset"):
-            _ = data.get(key)
+    if not isinstance(data, dict):
+        return result
+
+    namespaces = data.get("namespaces") or []
+    routes = data.get("routes") or {}
+    looks_like_wp_rest = (
+        isinstance(namespaces, list) and (namespaces or "namespaces" in data)
+        and isinstance(routes, dict)
+    ) or any(str(ns).startswith("wp/") for ns in namespaces) or any(
+        str(rt).startswith("/wp/") for rt in routes)
+    if not looks_like_wp_rest:
+        return result
+
+    result["is_wp"] = True
+    if "batch/v1" in namespaces or "/batch/v1" in routes:
+        result["batch_advertised"] = True
+        evidence.append(Evidence(
+            "/wp-json/ (REST index)",
+            "batch/v1 namespace advertised in the REST index "
+            "(registered; reachability through any WAF not tested)"))
     return result
 
 
@@ -405,8 +451,11 @@ class ScanResult:
     tool: str = f"{TOOL_NAME} v{TOOL_VERSION}"
     is_wordpress: bool = False
     detected_version: str | None = None
+    detected_versions: list = field(default_factory=list)  # all distinct versions seen
+    version_conflict: bool = False   # vectors disagreed on the version
+    prerelease: bool = False         # a beta/RC/alpha version was observed
     verdict: str = V_UNKNOWN
-    batch_endpoint_exposed: bool = False
+    batch_namespace_advertised: bool = False
     chain_rce: bool = False          # full wp2shell RCE chain present (both CVEs)
     vulnerable_cves: list = field(default_factory=list)
     per_cve: dict = field(default_factory=dict)
@@ -422,6 +471,19 @@ class ScanResult:
 # --------------------------------------------------------------------------- #
 #  Scan orchestration                                                         #
 # --------------------------------------------------------------------------- #
+
+def registrable_domain(netloc: str) -> str:
+    """Best-effort registrable domain (last two labels), for scope comparison."""
+    netloc = (netloc or "").split("@")[-1].split(":")[0].lower().rstrip(".")
+    labels = [l for l in netloc.split(".") if l]
+    return ".".join(labels[-2:]) if len(labels) >= 2 else netloc
+
+
+def same_scope(host_a: str, host_b: str) -> bool:
+    """True if two hosts share a registrable domain (www/subdomain-tolerant)."""
+    return bool(host_a) and bool(host_b) and \
+        registrable_domain(host_a) == registrable_domain(host_b)
+
 
 def normalise_target(raw: str) -> str:
     if not raw.startswith(("http://", "https://")):
@@ -447,27 +509,57 @@ def scan_target(raw_target: str, timeout: int, verify_tls: bool) -> ScanResult:
         res.evidence = [asdict(e) for e in evidence]
         return res
 
-    # Run detection vectors in order of reliability; keep the most specific hit.
-    detected = None
+    # Scope guard: if redirects landed on a different registrable domain, warn —
+    # results below describe wherever we ended up, not necessarily the target.
+    final_host = urlparse(getattr(root, "url", base) or base).netloc
+    if final_host and not same_scope(host, final_host):
+        res.notes.append(
+            f"Redirect left the authorised host ({host} -> {final_host}). "
+            "Findings describe the redirect target; confirm this host is in "
+            "scope before acting on them.")
+
+    # Run every passive version vector; each appends its own evidence entries.
     for fn in (detect_from_html, detect_from_readme,
                detect_from_feed, detect_from_opml):
-        v = fn(session, base, timeout, evidence)
-        if v and (detected is None):
-            detected = v
+        fn(session, base, timeout, evidence)
 
     surface = probe_rest_surface(session, base, timeout, evidence)
 
-    res.is_wordpress = bool(detected) or surface["is_wp"] or any(
-        "WordPress" in e.detail or "wp-content" in e.detail for e in evidence
-    )
-    res.batch_endpoint_exposed = surface["batch_endpoint"]
-    res.detected_version = version_str(detected) if detected else None
+    # Aggregate all reported versions and check for disagreement / pre-releases.
+    raw_versions = [e.version for e in evidence if e.version]
+    prerelease_raws = [rv for rv in raw_versions if is_prerelease(rv)]
+    res.prerelease = bool(prerelease_raws)
+    parsed = [pv for pv in (parse_version(rv) for rv in raw_versions) if pv]
+    distinct = sorted(set(parsed))
+    res.detected_versions = [version_str(v) for v in distinct]
+    res.version_conflict = len(distinct) > 1
+
+    res.is_wordpress = bool(distinct) or surface["is_wp"] or any(
+        "wp-content" in e.detail or "wp-includes" in e.detail or
+        "WordPress" in e.detail for e in evidence)
+    res.batch_namespace_advertised = surface["batch_advertised"]
     res.evidence = [asdict(e) for e in evidence]
 
     if not res.is_wordpress:
         res.verdict = V_NOT_WP
         res.notes.append("No WordPress fingerprint found on this host.")
         return res
+
+    # A single trustworthy version is required to map a verdict. Conflicting
+    # vectors or a pre-release build force UNKNOWN (never a false PATCHED).
+    if res.version_conflict or res.prerelease:
+        detected = None
+    else:
+        detected = distinct[0] if distinct else None
+
+    if detected:
+        res.detected_version = version_str(detected)
+    elif res.version_conflict:
+        res.detected_version = "conflicting: " + " / ".join(res.detected_versions)
+    elif res.prerelease:
+        res.detected_version = f"{prerelease_raws[0]} (pre-release)"
+    else:
+        res.detected_version = None
 
     # Classify each CVE independently against the detected version.
     for cve, meta in VULN_DB.items():
@@ -498,12 +590,24 @@ def scan_target(raw_target: str, timeout: int, verify_tls: bool) -> ScanResult:
 
     # Notes / caveats.
     if res.verdict == V_UNKNOWN:
-        if res.batch_endpoint_exposed:
+        if res.version_conflict:
             res.notes.append(
-                "Core version is hidden but the REST batch endpoint is exposed. "
-                "Confirm the exact WordPress version manually (wp-admin > Updates, "
-                "or `wp core version`) and compare against the fixed releases "
-                + ", ".join(all_fixed_releases()) + ".")
+                "Version vectors disagreed (" + ", ".join(res.detected_versions) +
+                "). This can indicate a partial update, a cached page, or a "
+                "spoofed generator string. Verdict forced to UNKNOWN — confirm the "
+                "running version manually (`wp core version`) before acting.")
+        elif res.prerelease:
+            res.notes.append(
+                "A pre-release build was detected (" + ", ".join(prerelease_raws) +
+                "). Beta/RC builds cannot be mapped to a fixed-release verdict "
+                "reliably; confirm the exact build and compare against the fixed "
+                "releases " + ", ".join(all_fixed_releases()) + ".")
+        elif res.batch_namespace_advertised:
+            res.notes.append(
+                "Core version is hidden but the batch/v1 namespace is advertised in "
+                "the REST index. Confirm the exact WordPress version manually "
+                "(wp-admin > Updates, or `wp core version`) and compare against the "
+                "fixed releases " + ", ".join(all_fixed_releases()) + ".")
         else:
             res.notes.append(
                 "Could not determine the WordPress version from public vectors. "
@@ -630,7 +734,7 @@ def render_html_report(res: ScanResult, sample: bool = False) -> str:
 
     # Verdict quick-facts row.
     dv = escape(res.detected_version or "not disclosed")
-    batch = "yes" if res.batch_endpoint_exposed else "not observed"
+    batch = "advertised" if res.batch_namespace_advertised else "not advertised"
     n_vuln = len(res.vulnerable_cves)
     tracked = len(res.per_cve) or len(VULN_DB)
     chain_txt = "exposed" if res.chain_rce else "not complete"
@@ -639,7 +743,7 @@ def render_html_report(res: ScanResult, sample: bool = False) -> str:
         <div><span>Detected core</span><b>WordPress {dv}</b></div>
         <div><span>CVEs flagged</span><b>{n_vuln} of {tracked} tracked</b></div>
         <div><span>wp2shell RCE chain</span><b>{chain_txt}</b></div>
-        <div><span>REST batch endpoint</span><b>{batch}</b></div>
+        <div><span>batch/v1 namespace</span><b>{batch}</b></div>
       </div>"""
 
     # Findings — one card per tracked CVE, with its own affected/fixed ranges.
@@ -834,7 +938,7 @@ Team,
   WordPress version . {res.detected_version or 'not disclosed'}
   Verdict ........... {res.verdict} — {VERDICT_LABEL.get(res.verdict, '')}
   wp2shell RCE chain  {'EXPOSED' if res.chain_rce else 'not complete'}
-  REST batch route .. {'exposed' if res.batch_endpoint_exposed else 'not observed'}
+  batch/v1 namespace  {'advertised in REST index' if res.batch_namespace_advertised else 'not advertised'}
   Scanned (UTC) ..... {res.scanned_at}
 
 Tracked core CVEs:
@@ -908,7 +1012,7 @@ def print_summary(res: ScanResult):
             print(f"     - {cve}: {info['status']}  (fixed {info['fixed']})")
     if res.chain_rce:
         print("  Chain    : wp2shell pre-auth RCE chain EXPOSED")
-    print(f"  Batch EP : {'exposed' if res.batch_endpoint_exposed else 'not observed'}")
+    print(f"  batch/v1 : {'advertised in REST index' if res.batch_namespace_advertised else 'not advertised'}")
     if res.error:
         print(f"  Error    : {res.error}")
     if res.evidence:
@@ -931,13 +1035,15 @@ def build_demo_result() -> ScanResult:
                      scanned_at=datetime.now(timezone.utc).isoformat())
     res.is_wordpress = True
     res.detected_version = ver
-    res.batch_endpoint_exposed = True
+    res.detected_versions = [ver]
+    res.batch_namespace_advertised = True
     res.evidence = [
         {"source": "generator meta tag (homepage)",
          "detail": f'meta generator = "WordPress {ver}"', "version": ver},
         {"source": "/readme.html", "detail": f"Version {ver}", "version": ver},
-        {"source": "/wp-json/ (REST root)",
-         "detail": "batch/v1 namespace is registered (REST batch endpoint reachable)",
+        {"source": "/wp-json/ (REST index)",
+         "detail": "batch/v1 namespace advertised in the REST index "
+                   "(registered; reachability through any WAF not tested)",
          "version": None},
     ]
     # Run the real per-CVE classifier so the demo stays consistent with the DB.
