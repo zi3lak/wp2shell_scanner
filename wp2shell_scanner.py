@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
 # --------------------------------------------------------------------------- #
 
 TOOL_NAME = "CSSLTD WordPress core-vuln scanner"
-TOOL_VERSION = "2.2"
+TOOL_VERSION = "2.3"
 CSSLTD_CONTACT = "ops@cyberssl.co.uk"          # <-- edit to your intake address
 CSSLTD_SITE = "https://cyberssl.co.uk"
 USER_AGENT = f"CSSLTD-wp-core-scanner/{TOOL_VERSION} (+{CSSLTD_SITE})"
@@ -177,7 +177,7 @@ REFERENCES = [
      "https://www.vulncheck.com/blog/wp2shell"),
     ("SOCRadar — wp2shell WordPress RCE",
      "https://socradar.io/blog/wp2shell-wordpress-rce-cve-2026-63030/"),
-    ("WordPress releases (6.8.6 / 6.9.4 / 6.9.5 / 7.0.2)",
+    ("WordPress releases (safe targets: 6.8.6 / 6.9.5 / 7.0.2)",
      "https://wordpress.org/download/releases/"),
 ]
 
@@ -292,7 +292,7 @@ def all_fixed_releases():
 def recommended_releases():
     """Fixed releases that clear EVERY tracked CVE (safe upgrade targets).
 
-    A per-CVE fix is not necessarily safe overall: 6.9.4 fixes CVE-2026-3906
+    A per-CVE fix is not necessarily safe overall: 6.9.2 fixes CVE-2026-3906
     but is still vulnerable to the wp2shell chain (only closed in 6.9.5). This
     returns only releases that are non-vulnerable to all tracked CVEs.
     """
@@ -324,19 +324,37 @@ def build_session(timeout: int, verify_tls: bool) -> requests.Session:
     return s
 
 
-def _get(session, url, timeout, allow_redirects=True, scope_host=None, **kw):
+def _get(session, url, timeout, allow_redirects=True, scope_host=None,
+         max_hops=5, **kw):
+    # With a scope_host set, follow redirects MANUALLY: check each hop's host
+    # BEFORE issuing the request, so we never send a request to (or read data
+    # from) a host outside the authorised scope. requests' own auto-follow can't
+    # do this — it fetches the off-scope host first, then we'd only see it after.
+    if scope_host and allow_redirects:
+        current = url
+        for _ in range(max_hops + 1):
+            try:
+                r = session.get(current, timeout=timeout,
+                               allow_redirects=False, **kw)
+            except requests.RequestException as exc:
+                return exc
+            status = getattr(r, "status_code", 0)
+            headers = getattr(r, "headers", {}) or {}
+            location = headers.get("location") or headers.get("Location")
+            if status in (301, 302, 303, 307, 308) and location:
+                dest = urljoin(current, location)
+                if not same_scope(scope_host, urlparse(dest).netloc):
+                    return None            # off-scope: never requested
+                current = dest
+                continue
+            return r
+        return None                        # redirect loop / too many hops
+
     try:
-        r = session.get(url, timeout=timeout,
-                        allow_redirects=allow_redirects, **kw)
+        return session.get(url, timeout=timeout,
+                           allow_redirects=allow_redirects, **kw)
     except requests.RequestException as exc:
         return exc
-    # If auto-following redirects, discard any response that ended up off-scope
-    # so vector probes can never read data from an unauthorised host.
-    if scope_host and allow_redirects:
-        final = urlparse(getattr(r, "url", url) or url).netloc
-        if final and not same_scope(scope_host, final):
-            return None
-    return r
 
 
 # --------------------------------------------------------------------------- #

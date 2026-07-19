@@ -1,7 +1,7 @@
 {
   "target": "https://example.com/",
-  "scanned_at": "2026-07-19T06:40:44.174228+00:00",
-  "tool": "CSSLTD WordPress core-vuln scanner v2.2",
+  "scanned_at": "2026-07-19T06:56:36.096345+00:00",
+  "tool": "CSSLTD WordPress core-vuln scanner v2.3",
   "is_wordpress": true,
   "detected_version": "6.9.1",
   "detected_versions": [

@@ -10,7 +10,7 @@ The scan flagged example.com as VULNERABLE to the wp2shell pre-auth RCE chain (C
   Verdict ........... VULNERABLE — Vulnerable — patch immediately
   wp2shell RCE chain  EXPOSED
   batch/v1 namespace  advertised in REST index
-  Scanned (UTC) ..... 2026-07-19T06:40:44.174228+00:00
+  Scanned (UTC) ..... 2026-07-19T06:56:36.096345+00:00
 
 Tracked core CVEs:
   CVE-2026-63030 [VULNERABLE] — wp2shell — REST API batch-route confusion → RCE
@@ -28,10 +28,10 @@ Detection evidence:
     - /readme.html: Version 6.9.1  (v6.9.1)
     - /wp-json/ (REST index): batch/v1 namespace advertised in the REST index (registered; reachability through any WAF not tested)
 
-Attached: wp2shell_report_example.com_20260719-074044.html
+Attached: wp2shell_report_example.com_20260719-075636.html
 
 This scan was detection-only (version fingerprint + passive REST-surface read);
 no exploitation was attempted.
 
-— CSSLTD WordPress core-vuln scanner v2.2
+— CSSLTD WordPress core-vuln scanner v2.3
    https://cyberssl.co.uk

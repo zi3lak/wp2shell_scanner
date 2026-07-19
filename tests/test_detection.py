@@ -36,11 +36,34 @@ class FakeSession:
         self.routes = routes
         self.headers = {}
         self.verify = True
+        self.hits = []          # every URL actually requested
 
     def mount(self, *_):  # build_session compatibility (unused here)
         pass
 
     def get(self, url, timeout=None, allow_redirects=True, **kw):
+        self.hits.append(url)
+        # Emulate requests' auto-follow so a naive allow_redirects=True would
+        # actually reach the redirect target (this is what makes the off-scope
+        # vector-redirect bug observable in a test).
+        if allow_redirects:
+            seen = 0
+            while seen < 10:
+                r = self._resolve(url)
+                loc = (r.headers or {}).get("location") or \
+                    (r.headers or {}).get("Location")
+                if r.status_code in (301, 302, 303, 307, 308) and loc:
+                    url = loc
+                    self.hits.append(url)
+                    seen += 1
+                    continue
+                r.url = url
+                return r
+        r = self._resolve(url)
+        r.url = url
+        return r
+
+    def _resolve(self, url):
         for suffix, resp in self.routes.items():
             if url.rstrip("/").endswith(suffix.rstrip("/")) or \
                (suffix == "/" and url.count("/") <= 3):
@@ -151,6 +174,22 @@ def main():
     check("cross-host redirect blocked (error set)",
           bool(r.error) and "redirect blocked" in r.error)
     check("cross-host redirect not flagged WordPress", r.is_wordpress is False)
+
+    # 8b) A VECTOR (readme.html) redirecting off-scope must NOT cause any request
+    #     to the foreign host. FakeSession.get emulates real auto-follow, so the
+    #     old allow_redirects=True path would record a hit on evil.other here.
+    sess = FakeSession({
+        "HOME": {"text": meta_html("7.0.1")},
+        "readme.html": {"status": 302,
+                        "headers": {"location": "https://evil.other/foreign-readme"}},
+        "wp-json": {"data": WP_REST_BATCH},
+    })
+    w.build_session = lambda timeout, verify_tls: sess
+    r = w.scan_target("https://site.example", timeout=5, verify_tls=True)
+    check("vector redirect: foreign host never requested",
+          [u for u in sess.hits if "evil.other" in u] == [])
+    check("vector redirect: still classified from in-scope data",
+          r.verdict == w.V_VULN)
 
     # 9) CVE-2026-3906 range: vulnerable at 6.9.1, patched at 6.9.2.
     r = scenario({"HOME": {"text": meta_html("6.9.1")}, "wp-json": {"data": WP_REST}})

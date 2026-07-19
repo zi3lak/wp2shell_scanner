@@ -141,7 +141,7 @@ script (default `ops@cyberssl.co.uk`). Edit it to your own intake address.
 | Verdict | Meaning |
 |---------|---------|
 | `VULNERABLE` | Detected version falls inside an affected range — patch immediately |
-| `PATCHED` | On a fixed release; not exposed to this chain |
+| `PATCHED` | On a fixed release; not exposed to the tracked CVEs |
 | `NOT_AFFECTED` | Version predates the earliest tracked flaw (< 6.8.0 — CVE-2026-60137) |
 | `UNKNOWN` | Version could not be confirmed, vectors disagreed, or a pre-release build was seen — verify manually |
 | `NOT_WORDPRESS` | No WordPress fingerprint found |
@@ -184,7 +184,7 @@ fictional vulnerable host (`example.com`, WordPress 6.9.1 — exposed to all thr
 - [NVD — CVE-2026-63030](https://nvd.nist.gov/vuln/detail/CVE-2026-63030) · [NVD — CVE-2026-3906](https://nvd.nist.gov/vuln/detail/CVE-2026-3906)
 - [Rapid7 — ETR: CVE-2026-63030 wp2shell](https://www.rapid7.com/blog/post/etr-cve-2026-63030-wp2shell-a-critical-remote-code-execution-vulnerability-in-wordpress-core/)
 - [VulnCheck — WP2Shell (CVE-2026-63030 & CVE-2026-60137)](https://www.vulncheck.com/blog/wp2shell)
-- [WordPress releases (6.8.6 / 6.9.4 / 6.9.5 / 7.0.2)](https://wordpress.org/download/releases/)
+- [WordPress releases (safe targets: 6.8.6 / 6.9.5 / 7.0.2)](https://wordpress.org/download/releases/)
 
 ---
 
