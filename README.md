@@ -6,13 +6,15 @@
 [![Mode: detection-only](https://img.shields.io/badge/mode-detection--only-brightgreen.svg)](#what-it-explicitly-does-not-do)
 [![CVE-2026-63030 · CVE-2026-60137](https://img.shields.io/badge/CVE-2026--63030%20%C2%B7%202026--60137-C81E3A.svg)](https://github.com/advisories/GHSA-ff9f-jf42-662q)
 
-**Non-intrusive detection scanner for the WordPress `wp2shell` pre-authentication RCE chain.**
+**Non-intrusive detection scanner for recent WordPress *core* vulnerabilities — including the `wp2shell` pre-authentication RCE chain.**
 
 `wp2shell_scanner.py` fingerprints a WordPress site's core version and reads its
-publicly advertised REST API surface to decide whether the host is exposed to the
-**wp2shell** chain — **CVE-2026-63030 + CVE-2026-60137**. It **detects only**: no
-exploit payload is ever sent. Single file, one dependency (`requests`), CI-friendly
-exit codes, and client-ready HTML / JSON / e-mail reports.
+publicly advertised REST API surface, then classifies **each tracked core CVE
+independently** against the detected version. Verdicts are **branch-aware** — e.g. a
+`6.8.x` site is correctly reported as exposed to the SQL-injection CVE but *not* to the
+full RCE chain. It **detects only**: no exploit payload is ever sent. Single file, one
+dependency (`requests`), CI-friendly exit codes, and client-ready HTML / JSON / e-mail
+reports.
 
 > ⚠️ **Authorised use only.** Scan systems you own or are explicitly authorised (in
 > writing) to test. The scanner sends an identifying `User-Agent` so blue teams can
@@ -20,26 +22,36 @@ exit codes, and client-ready HTML / JSON / e-mail reports.
 
 ---
 
-## The vulnerability
+## Tracked vulnerabilities (WordPress core)
 
-`wp2shell` is a chain of two WordPress **core** flaws that together yield
-**unauthenticated remote code execution**:
+| CVE | Weakness | Access | Affected core | Fixed in |
+|-----|----------|--------|---------------|----------|
+| **CVE-2026-63030** — wp2shell | CWE-436 — REST batch route confusion → **RCE** (Critical, `GHSA-ff9f-jf42-662q`) | Unauthenticated | `6.9.0`–`6.9.4`, `7.0.0`–`7.0.1` | `6.9.5`, `7.0.2` |
+| **CVE-2026-60137** | CWE-89 — SQL injection in `WP_Query` `author__not_in` (High) | Unauthenticated | `6.8.0`–`6.8.5`, `6.9.0`–`6.9.4`, `7.0.0`–`7.0.1` | `6.8.6`, `6.9.5`, `7.0.2` |
+| **CVE-2026-3906** | CWE-862 — Notes REST API missing authorization (Moderate, CVSS 4.3, `GHSA-6x83-fcf5-r65g`) | Subscriber+ | `6.9.0`–`6.9.3` | `6.9.4` |
 
-| CVE | Weakness | Component | Role in the chain |
-|-----|----------|-----------|-------------------|
-| **CVE-2026-63030** | CWE-436 — REST batch route confusion (Critical, CVSS 7.5, `GHSA-ff9f-jf42-662q`) | `WP_REST_Server::serve_batch_request_v1()` · `/wp-json/batch/v1` | **Entry point.** A route-confusion flaw lets an unauthenticated request reach an internal query path. |
-| **CVE-2026-60137** | CWE-89 — SQL injection | `WP_Query` — `author__not_in` parameter | **Second link.** Unsanitised input reaches the database query; chained with the above → unauth RCE. |
+**The `wp2shell` RCE chain** = CVE-2026-63030 **+** CVE-2026-60137 together → **pre-auth
+remote code execution** on a default install. The scanner reports the chain as *exposed*
+only when **both** CVEs classify as vulnerable for the detected version.
 
-| | |
-|---|---|
-| **Affected** | WordPress `6.9.0`–`6.9.4` and `7.0.0`–`7.0.1` |
-| **Fixed in** | WordPress `6.9.5` and `7.0.2` |
-| **First affected** | `6.9.0` (the batch-route weakness was introduced in 6.9) |
+**Branch nuances the scanner gets right:**
+- `6.8.x` carries the SQL injection (CVE-2026-60137) **only** — not the RCE chain.
+- CVE-2026-3906 was only *partially* fixed in `6.9.2`/`6.9.3` and **fully** fixed in
+  `6.9.4`, while the wp2shell chain isn't closed until `6.9.5`. So a `6.9.4` site reads
+  *patched* for the Notes bug but still *vulnerable* to the RCE chain.
 
-**Operationally important:** technical write-ups and a working PoC are already public.
-Version detection is now the *absolute minimum* — the priority is **patching**. And
-note that updating closes the vulnerable path but **does not remove a backdoor planted
-before the patch** — hence the compromise-assessment step in the report.
+**Operationally important:** technical write-ups and a working PoC for wp2shell are
+already public. Version detection is now the *absolute minimum* — the priority is
+**patching**. Updating closes the vulnerable path but **does not remove a backdoor
+planted before the patch** — hence the compromise-assessment step in the report.
+
+### Scope
+
+This is a **core-version** scanner. Plugin and theme CVEs — the large majority of the
+WPScan / Patchstack catalogue — require a live, curated feed and per-plugin version
+enumeration, and are intentionally **out of scope** here. Within its lane (recent
+WordPress core CVEs), it aims to be precise and branch-accurate rather than to
+duplicate a commercial vulnerability database.
 
 ---
 
@@ -135,7 +147,7 @@ script (default `ops@cyberssl.co.uk`). Edit it to your own intake address.
 ## Example output
 
 The [`examples/`](examples/) directory contains **synthetic** (`--demo`) output for a
-fictional vulnerable host (`example.com`, WordPress 7.0.1):
+fictional vulnerable host (`example.com`, WordPress 6.9.1 — exposed to all three tracked CVEs):
 
 - [`wp2shell_report_example.com.html`](examples/) — the client-ready HTML report
 - [`wp2shell_example.com.json`](examples/) — the JSON record
@@ -149,7 +161,7 @@ fictional vulnerable host (`example.com`, WordPress 7.0.1):
 ## Remediation (as emitted in the report)
 
 1. Take a verified backup (DB + full file tree) first.
-2. Update WordPress core to **6.9.5 / 7.0.2** or later on the matching branch.
+2. Update WordPress core to the fixed release for your branch — **6.8.6 / 6.9.4 / 6.9.5 / 7.0.2** — or later.
 3. Confirm the site and admin still work.
 4. **Assume compromise** if the host was exposed while vulnerable — run a compromise
    assessment across themes, plugins, `uploads/`, `wp-config.php`, wp-cron, and admin
@@ -162,8 +174,12 @@ fictional vulnerable host (`example.com`, WordPress 7.0.1):
 
 ## References
 
-- [WordPress GitHub Security Advisory — GHSA-ff9f-jf42-662q](https://github.com/advisories/GHSA-ff9f-jf42-662q)
-- [WordPress releases (6.9.5 / 7.0.2)](https://wordpress.org/download/releases/)
+- [WordPress GitHub Security Advisory — wp2shell (GHSA-ff9f-jf42-662q)](https://github.com/advisories/GHSA-ff9f-jf42-662q)
+- [WordPress GitHub Security Advisory — Notes REST API (GHSA-6x83-fcf5-r65g)](https://github.com/advisories/GHSA-6x83-fcf5-r65g)
+- [NVD — CVE-2026-3906](https://nvd.nist.gov/vuln/detail/CVE-2026-3906)
+- [Rapid7 — ETR: CVE-2026-63030 wp2shell](https://www.rapid7.com/blog/post/etr-cve-2026-63030-wp2shell-a-critical-remote-code-execution-vulnerability-in-wordpress-core/)
+- [VulnCheck — WP2Shell (CVE-2026-63030 & CVE-2026-60137)](https://www.vulncheck.com/blog/wp2shell)
+- [WordPress releases (6.8.6 / 6.9.4 / 6.9.5 / 7.0.2)](https://wordpress.org/download/releases/)
 
 ---
 

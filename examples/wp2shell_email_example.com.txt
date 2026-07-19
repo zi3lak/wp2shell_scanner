@@ -1,33 +1,37 @@
 To: ops@cyberssl.co.uk
-Subject: [ACTION REQUIRED] wp2shell scan — example.com — VULNERABLE
+Subject: [ACTION REQUIRED] WP core scan — example.com — VULNERABLE
 
 Team,
 
 The scan flagged example.com as VULNERABLE to the wp2shell pre-auth RCE chain (CVE-2026-63030 + CVE-2026-60137).
 
   Target ............ https://example.com/
-  WordPress version . 7.0.1
+  WordPress version . 6.9.1
   Verdict ........... VULNERABLE — Vulnerable — patch immediately
+  wp2shell RCE chain  EXPOSED
   REST batch route .. exposed
-  Scanned (UTC) ..... 2026-07-18T17:41:36.836128+00:00
+  Scanned (UTC) ..... 2026-07-19T02:50:59.674959+00:00
 
-Chain:
-  CVE-2026-63030 — REST API batch-route confusion (entry point, CVSS 7.5, Critical)
-  CVE-2026-60137 — author__not_in WP_Query SQL injection (second link)
-  Affected: 6.9.0-6.9.4 / 7.0.0-7.0.1   Fixed: 6.9.5 / 7.0.2
+Tracked core CVEs:
+  CVE-2026-63030 [VULNERABLE] — wp2shell — REST API batch-route confusion → RCE
+      affected 6.9.0–6.9.4 · 7.0.0–7.0.1   fixed 6.9.5 / 7.0.2
+  CVE-2026-60137 [VULNERABLE] — author__not_in WP_Query SQL injection
+      affected 6.8.0–6.8.5 · 6.9.0–6.9.4 · 7.0.0–7.0.1   fixed 6.8.6 / 6.9.5 / 7.0.2
+  CVE-2026-3906 [VULNERABLE] — Notes REST API — missing authorization (arbitrary note creation)
+      affected 6.9.0–6.9.3   fixed 6.9.4
 
 Recommendation:
-  Recommend immediate patching to WordPress 6.9.5 / 7.0.2 and a compromise assessment, since this instance was exposed while running a vulnerable version.
+  Recommend IMMEDIATE patching to the fixed release for this branch (6.8.6 / 6.9.4 / 6.9.5 / 7.0.2) and a compromise assessment, since this instance was exposed while running a vulnerable version.
 
 Detection evidence:
-    - generator meta tag (homepage): meta generator = "WordPress 7.0.1"  (v7.0.1)
-    - /readme.html: Version 7.0.1  (v7.0.1)
+    - generator meta tag (homepage): meta generator = "WordPress 6.9.1"  (v6.9.1)
+    - /readme.html: Version 6.9.1  (v6.9.1)
     - /wp-json/ (REST root): batch/v1 namespace is registered (REST batch endpoint reachable)
 
-Attached: wp2shell_report_example.com_20260718-174136.html
+Attached: wp2shell_report_example.com_20260719-035059.html
 
 This scan was detection-only (version fingerprint + passive REST-surface read);
 no exploitation was attempted.
 
-— CSSLTD wp2shell-scanner v1.0
+— CSSLTD WordPress core-vuln scanner v2.0
    https://cyberssl.co.uk

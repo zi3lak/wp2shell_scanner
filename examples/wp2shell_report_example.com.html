@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>wp2shell exposure — example.com</title>
+<title>WordPress core exposure — example.com</title>
 <style>
 :root{
   --ink:#0E1116; --ink-2:#3A424E; --muted:#6B7480; --line:#E2E6EB;
@@ -84,23 +84,23 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
 <header class="masthead">
   <div class="brand">CyberSentinel Solutions Ltd<small>Offensive Security · Vulnerability Assessment</small></div>
   <div class="doc-meta">
-    Report: <b>wp2shell exposure</b><br>
+    Report: <b>WordPress core exposure</b><br>
     Target: <b>example.com</b><br>
-    Scanned: <b>2026-07-18 17:41:36 UTC</b><br>
-    Tool: <b>CSSLTD wp2shell-scanner v1.0</b>
+    Scanned: <b>2026-07-19 02:50:59 UTC</b><br>
+    Tool: <b>CSSLTD WordPress core-vuln scanner v2.0</b>
   </div>
 </header>
 
-<h1 class="title">WordPress wp2shell exposure assessment</h1>
-<p class="subtitle">Pre-authentication RCE chain — CVE-2026-63030 + CVE-2026-60137</p>
+<h1 class="title">WordPress core vulnerability assessment</h1>
+<p class="subtitle">Recent core CVEs — wp2shell RCE chain (CVE-2026-63030 + CVE-2026-60137) &amp; CVE-2026-3906</p>
 
 <div class="verdict" style="border-left-color:#C81E3A">
   <div class="flag" style="color:#C81E3A">Vulnerable — patch immediately</div>
   
       <div class="row">
-        <div><span>Detected core</span><b>WordPress 7.0.1</b></div>
-        <div><span>Affected range</span><b>6.9.0–6.9.4 · 7.0.0–7.0.1</b></div>
-        <div><span>Fixed in</span><b>6.9.5 · 7.0.2</b></div>
+        <div><span>Detected core</span><b>WordPress 6.9.1</b></div>
+        <div><span>CVEs flagged</span><b>3 of 3 tracked</b></div>
+        <div><span>wp2shell RCE chain</span><b>exposed</b></div>
         <div><span>REST batch endpoint</span><b>yes</b></div>
       </div>
 </div>
@@ -110,15 +110,17 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
   
         <div class="finding">
           <div class="head">
-            <div class="cve">CVE-2026-63030<small>wp2shell — REST API batch-route confusion</small></div>
+            <div class="cve">CVE-2026-63030<small>wp2shell — REST API batch-route confusion → RCE</small></div>
             <div class="badge" style="background:#C81E3A">VULNERABLE</div>
           </div>
           <table>
-            <tr><td class="k">Role in chain</td><td class="v" style="white-space:normal">Entry point of the chain. A route-confusion flaw in the REST batch endpoint lets an unauthenticated request reach an internal query path.</td></tr>
+            <tr><td class="k">Summary</td><td class="v" style="white-space:normal">Entry point of the wp2shell chain. A route-confusion flaw in the REST batch endpoint lets an unauthenticated request reach an internal query path; chained with CVE-2026-60137 it yields unauthenticated remote code execution.</td></tr>
             <tr><td class="k">Component</td><td class="v">WP_REST_Server::serve_batch_request_v1()  ·  /wp-json/batch/v1</td></tr>
             <tr><td class="k">Weakness</td><td class="v">CWE-436 (Interpretation Conflict)</td></tr>
-            <tr><td class="k">CVSS</td><td class="v">7.5</td></tr>
-            <tr><td class="k">Severity</td><td class="v">Critical</td></tr>
+            <tr><td class="k">Access</td><td class="v">Unauthenticated</td></tr>
+            <tr><td class="k">Severity</td><td class="v">Critical (CVSS see advisory)</td></tr>
+            <tr><td class="k">Affected</td><td class="v">6.9.0–6.9.4 · 7.0.0–7.0.1</td></tr>
+            <tr><td class="k">Fixed in</td><td class="v">6.9.5 / 7.0.2</td></tr>
             <tr><td class="k">Advisory</td><td class="v">GHSA-ff9f-jf42-662q</td></tr>
           </table>
         </div>
@@ -128,12 +130,30 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
             <div class="badge" style="background:#C81E3A">VULNERABLE</div>
           </div>
           <table>
-            <tr><td class="k">Role in chain</td><td class="v" style="white-space:normal">Second link. Unsanitised input in author__not_in reaches the database query; combined with CVE-2026-63030 this produces unauthenticated remote code execution.</td></tr>
+            <tr><td class="k">Summary</td><td class="v" style="white-space:normal">Second link of the wp2shell chain. Unsanitised input in author__not_in reaches the database query. Present since 6.8 — the 6.8 branch is exposed to this SQL injection on its own, but not to the full RCE chain (which also needs CVE-2026-63030).</td></tr>
             <tr><td class="k">Component</td><td class="v">WP_Query — author__not_in parameter</td></tr>
             <tr><td class="k">Weakness</td><td class="v">CWE-89 (SQL Injection)</td></tr>
-            <tr><td class="k">CVSS</td><td class="v">chained (no standalone score published)</td></tr>
-            <tr><td class="k">Severity</td><td class="v">Critical (as part of the chain)</td></tr>
-            <tr><td class="k">Advisory</td><td class="v">—</td></tr>
+            <tr><td class="k">Access</td><td class="v">Unauthenticated</td></tr>
+            <tr><td class="k">Severity</td><td class="v">High (CVSS see advisory)</td></tr>
+            <tr><td class="k">Affected</td><td class="v">6.8.0–6.8.5 · 6.9.0–6.9.4 · 7.0.0–7.0.1</td></tr>
+            <tr><td class="k">Fixed in</td><td class="v">6.8.6 / 6.9.5 / 7.0.2</td></tr>
+            <tr><td class="k">Advisory</td><td class="v">GHSA-ff9f-jf42-662q</td></tr>
+          </table>
+        </div>
+        <div class="finding">
+          <div class="head">
+            <div class="cve">CVE-2026-3906<small>Notes REST API — missing authorization (arbitrary note creation)</small></div>
+            <div class="badge" style="background:#C81E3A">VULNERABLE</div>
+          </div>
+          <table>
+            <tr><td class="k">Summary</td><td class="v" style="white-space:normal">The Notes feature (added in 6.9) skipped the edit_post permission check in its REST endpoint, letting a Subscriber create notes on any post — including private and other users&#x27; posts. Only fully fixed in 6.9.4 (partial fixes in 6.9.2/6.9.3).</td></tr>
+            <tr><td class="k">Component</td><td class="v">REST comments controller — create_item_permissions_check() (Notes)</td></tr>
+            <tr><td class="k">Weakness</td><td class="v">CWE-862 (Missing Authorization)</td></tr>
+            <tr><td class="k">Access</td><td class="v">Authenticated (Subscriber+)</td></tr>
+            <tr><td class="k">Severity</td><td class="v">Moderate (CVSS 4.3)</td></tr>
+            <tr><td class="k">Affected</td><td class="v">6.9.0–6.9.3</td></tr>
+            <tr><td class="k">Fixed in</td><td class="v">6.9.4</td></tr>
+            <tr><td class="k">Advisory</td><td class="v">GHSA-6x83-fcf5-r65g</td></tr>
           </table>
         </div>
 </section>
@@ -142,11 +162,11 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
   <h2>Detection evidence</h2>
   <table class="evidence">
     <tr><th>Source</th><th>Observation</th><th>Version</th></tr>
-    <tr><td>generator meta tag (homepage)</td><td class='mono'>meta generator = &quot;WordPress 7.0.1&quot;</td><td class='mono'>7.0.1</td></tr><tr><td>/readme.html</td><td class='mono'>Version 7.0.1</td><td class='mono'>7.0.1</td></tr><tr><td>/wp-json/ (REST root)</td><td class='mono'>batch/v1 namespace is registered (REST batch endpoint reachable)</td><td class='mono'>—</td></tr>
+    <tr><td>generator meta tag (homepage)</td><td class='mono'>meta generator = &quot;WordPress 6.9.1&quot;</td><td class='mono'>6.9.1</td></tr><tr><td>/readme.html</td><td class='mono'>Version 6.9.1</td><td class='mono'>6.9.1</td></tr><tr><td>/wp-json/ (REST root)</td><td class='mono'>batch/v1 namespace is registered (REST batch endpoint reachable)</td><td class='mono'>—</td></tr>
   </table>
 </section>
 
-<section><h2>Analyst notes</h2><div class="notes"><p style='margin:0 0 8px'>• Detected version falls inside a vulnerable range. Treat any internet-facing instance that ran this version as potentially compromised — patching closes the route but does not remove a backdoor planted beforehand.</p></div></section>
+<section><h2>Analyst notes</h2><div class="notes"><p style='margin:0 0 8px'>• Detected version is exposed to the full wp2shell pre-auth RCE chain (CVE-2026-63030 + CVE-2026-60137). Treat any internet-facing instance that ran this version as potentially compromised — patching closes the route but does not remove a backdoor planted beforehand.</p></div></section>
 
 <section>
   <h2>Remediation</h2>
@@ -155,7 +175,7 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
         <li><b>Take a verified backup first.</b>
             <p>Back up the database and the full file tree before making changes, so you can restore and later forensically compare.</p></li>
         <li><b>Update WordPress Core.</b>
-            <p>Move to a fixed release — <code>6.9.5</code> · <code>7.0.2</code> or later on the matching branch. Then confirm with <code>wp core version</code> or <b>Dashboard → Updates</b>.</p></li>
+            <p>Move to a fixed release — <code>6.8.6</code> · <code>6.9.4</code> · <code>6.9.5</code> · <code>7.0.2</code> or later on the matching branch. Then confirm with <code>wp core version</code> or <b>Dashboard → Updates</b>.</p></li>
         <li><b>Confirm the site still works.</b>
             <p>Verify the public site and admin load correctly after the update; check for plugin/theme conflicts.</p></li>
         <li><b>Assume compromise if it was exposed while vulnerable.</b>
@@ -171,11 +191,11 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
 
 <section class="refs">
   <h2>References</h2>
-  <ul><li><a href="https://github.com/advisories/GHSA-ff9f-jf42-662q">WordPress GitHub Security Advisory (GHSA-ff9f-jf42-662q)</a></li><li><a href="https://www.rapid7.com/blog/post/etr-cve-2026-63030-wp2shell-a-critical-remote-code-execution-vulnerability-in-wordpress-core/">Rapid7 — ETR: CVE-2026-63030 wp2shell</a></li><li><a href="https://socradar.io/blog/wp2shell-wordpress-rce-cve-2026-63030/">SOCRadar — wp2shell WordPress RCE</a></li><li><a href="https://wp2shell.com/">Official checker (Assetnote / Searchlight Cyber)</a></li><li><a href="https://wordpress.org/download/releases/">WordPress releases 6.9.5 / 7.0.2</a></li></ul>
+  <ul><li><a href="https://github.com/advisories/GHSA-ff9f-jf42-662q">WordPress GitHub Security Advisory — wp2shell (GHSA-ff9f-jf42-662q)</a></li><li><a href="https://github.com/advisories/GHSA-6x83-fcf5-r65g">WordPress GitHub Security Advisory — Notes REST API (GHSA-6x83-fcf5-r65g)</a></li><li><a href="https://nvd.nist.gov/vuln/detail/CVE-2026-3906">NVD — CVE-2026-3906</a></li><li><a href="https://www.rapid7.com/blog/post/etr-cve-2026-63030-wp2shell-a-critical-remote-code-execution-vulnerability-in-wordpress-core/">Rapid7 — ETR: CVE-2026-63030 wp2shell</a></li><li><a href="https://www.vulncheck.com/blog/wp2shell">VulnCheck — WP2Shell (CVE-2026-63030 &amp; CVE-2026-60137)</a></li><li><a href="https://socradar.io/blog/wp2shell-wordpress-rce-cve-2026-63030/">SOCRadar — wp2shell WordPress RCE</a></li><li><a href="https://wordpress.org/download/releases/">WordPress releases (6.8.6 / 6.9.4 / 6.9.5 / 7.0.2)</a></li></ul>
 </section>
 
 <footer class="foot">
   <span class="confidential">Confidential — client engagement</span>
-  <span>Generated by CSSLTD wp2shell-scanner v1.0 · Detection-only, non-intrusive</span>
+  <span>Generated by CSSLTD WordPress core-vuln scanner v2.0 · Detection-only, non-intrusive</span>
 </footer>
 </div></div></body></html>

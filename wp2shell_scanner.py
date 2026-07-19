@@ -3,24 +3,31 @@
 """
 wp2shell_scanner.py  —  CyberSentinel Solutions Ltd (CSSLTD)
 
-Non-intrusive detection scanner for the WordPress "wp2shell" pre-auth RCE chain:
+Non-intrusive detection scanner for recent WordPress CORE vulnerabilities.
+Tracked CVEs (branch-aware, per-CVE verdicts):
 
-    CVE-2026-63030  REST API batch-route confusion in
-                    WP_REST_Server::serve_batch_request_v1()  (entry point)
+    CVE-2026-63030  wp2shell — REST API batch-route confusion in
+                    WP_REST_Server::serve_batch_request_v1()  (RCE entry point)
+                    affected 6.9.0-6.9.4 / 7.0.0-7.0.1   fixed 6.9.5 / 7.0.2
     CVE-2026-60137  SQL injection in the author__not_in parameter of WP_Query
-                    (second link; the chain yields unauthenticated RCE)
+                    (second link of the wp2shell RCE chain; also affects 6.8)
+                    affected 6.8.0-6.8.5 / 6.9.0-6.9.4 / 7.0.0-7.0.1
+                    fixed 6.8.6 / 6.9.5 / 7.0.2
+    CVE-2026-3906   Notes REST API missing authorization (Subscriber+ can
+                    create arbitrary notes)   affected 6.9.0-6.9.3  fixed 6.9.4
 
-Affected:  WordPress 6.9.0-6.9.4 and 7.0.0-7.0.1
-Fixed in:  WordPress 6.9.5 and 7.0.2
+Scope: WordPress CORE only. Plugin/theme CVEs (the bulk of the WPScan /
+Patchstack catalogue) need a live curated feed and per-plugin enumeration and
+are intentionally out of scope for this static core-version scanner.
 
 WHAT THIS TOOL DOES
     * Fingerprints the WordPress core version through several passive vectors
       (generator meta tag, readme.html, RSS/Atom feed, OPML, REST root).
     * Reads the site's advertised REST API surface (/wp-json/) to see whether
       the batch endpoint namespace (batch/v1) is registered.
-    * Maps the detected version to the affected/fixed ranges and produces a
-      verdict, a client-ready HTML remediation report, a JSON record, and a
-      draft notification e-mail to CSSLTD.
+    * Classifies each tracked CVE independently against the detected version
+      and produces a verdict, a client-ready HTML remediation report, a JSON
+      record, and a draft notification e-mail to CSSLTD.
 
 WHAT THIS TOOL DOES NOT DO
     * It does NOT exploit anything. It sends no SQL-injection payload, no
@@ -67,53 +74,103 @@ except ImportError:  # pragma: no cover
 #  Configuration                                                              #
 # --------------------------------------------------------------------------- #
 
-TOOL_NAME = "CSSLTD wp2shell-scanner"
-TOOL_VERSION = "1.0"
+TOOL_NAME = "CSSLTD WordPress core-vuln scanner"
+TOOL_VERSION = "2.0"
 CSSLTD_CONTACT = "ops@cyberssl.co.uk"          # <-- edit to your intake address
 CSSLTD_SITE = "https://cyberssl.co.uk"
-USER_AGENT = f"CSSLTD-wp2shell-scanner/{TOOL_VERSION} (+{CSSLTD_SITE})"
+USER_AGENT = f"CSSLTD-wp-core-scanner/{TOOL_VERSION} (+{CSSLTD_SITE})"
 
-# Vulnerable ranges (inclusive) and the fixed releases per branch.
-VULN_RANGES = [((6, 9, 0), (6, 9, 4)), ((7, 0, 0), (7, 0, 1))]
-FIXED_RELEASES = ["6.9.5", "7.0.2"]
-FIRST_AFFECTED = (6, 9, 0)   # the batch-route weakness was introduced in 6.9
+# --------------------------------------------------------------------------- #
+#  Vulnerability database — WordPress CORE only                               #
+#                                                                             #
+#  Version-based detection covers *core* CVEs where the fixed release is      #
+#  public and unambiguous. Each entry carries its own affected ranges and     #
+#  fixed releases, so the verdict is computed per CVE and is branch-aware     #
+#  (e.g. the 6.8.x branch is exposed to the SQLi but NOT the full RCE chain). #
+#                                                                             #
+#  Scope note: plugin/theme CVEs (the large majority of the WPScan/Patchstack #
+#  catalogue) are intentionally out of scope — they require a live, curated   #
+#  feed and per-plugin version enumeration, not a static core-version map.    #
+#  Ranges below are verified against vendor advisories (see REFERENCES).      #
+# --------------------------------------------------------------------------- #
 
-# Static knowledge base for the two CVEs (facts, not exploitation detail).
-CVE_DB = {
+# Static knowledge base of core CVEs (facts only, no exploitation detail).
+# affected: list of inclusive (low, high) version tuples.
+# fixed:    the release(s) that close it, per branch.
+# first_affected: earliest affected version (older installs are NOT_AFFECTED).
+VULN_DB = {
     "CVE-2026-63030": {
-        "title": "wp2shell — REST API batch-route confusion",
+        "title": "wp2shell — REST API batch-route confusion → RCE",
         "cwe": "CWE-436 (Interpretation Conflict)",
         "component": "WP_REST_Server::serve_batch_request_v1()  ·  /wp-json/batch/v1",
-        "cvss": "7.5",
+        "cvss": "see advisory",
         "severity": "Critical",
         "advisory": "GHSA-ff9f-jf42-662q",
-        "role": ("Entry point of the chain. A route-confusion flaw in the REST "
-                 "batch endpoint lets an unauthenticated request reach an "
-                 "internal query path."),
+        "auth": "Unauthenticated",
+        "role": ("Entry point of the wp2shell chain. A route-confusion flaw in "
+                 "the REST batch endpoint lets an unauthenticated request reach "
+                 "an internal query path; chained with CVE-2026-60137 it yields "
+                 "unauthenticated remote code execution."),
+        "affected": [((6, 9, 0), (6, 9, 4)), ((7, 0, 0), (7, 0, 1))],
+        "fixed": ["6.9.5", "7.0.2"],
+        "first_affected": (6, 9, 0),   # batch-route weakness introduced in 6.9
+        "chain": "wp2shell",
     },
     "CVE-2026-60137": {
         "title": "author__not_in WP_Query SQL injection",
         "cwe": "CWE-89 (SQL Injection)",
         "component": "WP_Query — author__not_in parameter",
-        "cvss": "chained (no standalone score published)",
-        "severity": "Critical (as part of the chain)",
-        "advisory": "—",
-        "role": ("Second link. Unsanitised input in author__not_in reaches the "
-                 "database query; combined with CVE-2026-63030 this produces "
-                 "unauthenticated remote code execution."),
+        "cvss": "see advisory",
+        "severity": "High",
+        "advisory": "GHSA-ff9f-jf42-662q",
+        "auth": "Unauthenticated",
+        "role": ("Second link of the wp2shell chain. Unsanitised input in "
+                 "author__not_in reaches the database query. Present since 6.8 — "
+                 "the 6.8 branch is exposed to this SQL injection on its own, but "
+                 "not to the full RCE chain (which also needs CVE-2026-63030)."),
+        "affected": [((6, 8, 0), (6, 8, 5)),
+                     ((6, 9, 0), (6, 9, 4)),
+                     ((7, 0, 0), (7, 0, 1))],
+        "fixed": ["6.8.6", "6.9.5", "7.0.2"],
+        "first_affected": (6, 8, 0),   # not affected before 6.8
+        "chain": "wp2shell",
+    },
+    "CVE-2026-3906": {
+        "title": "Notes REST API — missing authorization (arbitrary note creation)",
+        "cwe": "CWE-862 (Missing Authorization)",
+        "component": "REST comments controller — create_item_permissions_check() (Notes)",
+        "cvss": "4.3",
+        "severity": "Moderate",
+        "advisory": "GHSA-6x83-fcf5-r65g",
+        "auth": "Authenticated (Subscriber+)",
+        "role": ("The Notes feature (added in 6.9) skipped the edit_post "
+                 "permission check in its REST endpoint, letting a Subscriber "
+                 "create notes on any post — including private and other users' "
+                 "posts. Only fully fixed in 6.9.4 (partial fixes in 6.9.2/6.9.3)."),
+        "affected": [((6, 9, 0), (6, 9, 3))],
+        "fixed": ["6.9.4"],
+        "first_affected": (6, 9, 0),   # Notes feature introduced in 6.9
+        "chain": None,
     },
 }
 
+# The wp2shell RCE chain requires BOTH of these to be present.
+WP2SHELL_CHAIN = ("CVE-2026-63030", "CVE-2026-60137")
+
 REFERENCES = [
-    ("WordPress GitHub Security Advisory (GHSA-ff9f-jf42-662q)",
+    ("WordPress GitHub Security Advisory — wp2shell (GHSA-ff9f-jf42-662q)",
      "https://github.com/advisories/GHSA-ff9f-jf42-662q"),
+    ("WordPress GitHub Security Advisory — Notes REST API (GHSA-6x83-fcf5-r65g)",
+     "https://github.com/advisories/GHSA-6x83-fcf5-r65g"),
+    ("NVD — CVE-2026-3906",
+     "https://nvd.nist.gov/vuln/detail/CVE-2026-3906"),
     ("Rapid7 — ETR: CVE-2026-63030 wp2shell",
      "https://www.rapid7.com/blog/post/etr-cve-2026-63030-wp2shell-a-critical-remote-code-execution-vulnerability-in-wordpress-core/"),
+    ("VulnCheck — WP2Shell (CVE-2026-63030 & CVE-2026-60137)",
+     "https://www.vulncheck.com/blog/wp2shell"),
     ("SOCRadar — wp2shell WordPress RCE",
      "https://socradar.io/blog/wp2shell-wordpress-rce-cve-2026-63030/"),
-    ("Official checker (Assetnote / Searchlight Cyber)",
-     "https://wp2shell.com/"),
-    ("WordPress releases 6.9.5 / 7.0.2",
+    ("WordPress releases (6.8.6 / 6.9.4 / 6.9.5 / 7.0.2)",
      "https://wordpress.org/download/releases/"),
 ]
 
@@ -163,16 +220,43 @@ def version_str(v) -> str:
     return ".".join(str(p) for p in v) if v else "unknown"
 
 
-def classify_version(v) -> str:
-    """Map a WordPress version tuple to a verdict code."""
+# Severity ordering for rolling up per-CVE verdicts into one overall verdict.
+VERDICT_ORDER = [V_NOT_WP, V_NOT_AFFECTED, V_PATCHED, V_UNKNOWN, V_VULN]
+
+
+def classify_cve(v, meta) -> str:
+    """Verdict for a single CVE given a detected version tuple (or None)."""
     if v is None:
         return V_UNKNOWN
-    for low, high in VULN_RANGES:
+    for low, high in meta["affected"]:
         if low <= v <= high:
             return V_VULN
-    if v < FIRST_AFFECTED:
+    if v < meta["first_affected"]:
         return V_NOT_AFFECTED
-    return V_PATCHED  # anything not in a vulnerable range and >= 6.9.5 / 7.0.2
+    return V_PATCHED  # newer than every affected range on this branch
+
+
+def roll_up(statuses) -> str:
+    """Return the most severe verdict from an iterable of per-CVE verdicts."""
+    worst = V_NOT_AFFECTED
+    for s in statuses:
+        if VERDICT_ORDER.index(s) > VERDICT_ORDER.index(worst):
+            worst = s
+    return worst
+
+
+def fixed_for(meta) -> str:
+    """Human-readable fixed-release list for one CVE, e.g. '6.9.5 / 7.0.2'."""
+    return " / ".join(meta["fixed"])
+
+
+def all_fixed_releases():
+    """De-duplicated, sorted list of every fixed release across the DB."""
+    seen = {}
+    for meta in VULN_DB.values():
+        for f in meta["fixed"]:
+            seen[f] = parse_version(f) or (0, 0, 0)
+    return [f for f, _ in sorted(seen.items(), key=lambda kv: kv[1])]
 
 
 # --------------------------------------------------------------------------- #
@@ -323,6 +407,8 @@ class ScanResult:
     detected_version: str | None = None
     verdict: str = V_UNKNOWN
     batch_endpoint_exposed: bool = False
+    chain_rce: bool = False          # full wp2shell RCE chain present (both CVEs)
+    vulnerable_cves: list = field(default_factory=list)
     per_cve: dict = field(default_factory=dict)
     evidence: list = field(default_factory=list)
     notes: list = field(default_factory=list)
@@ -383,12 +469,9 @@ def scan_target(raw_target: str, timeout: int, verify_tls: bool) -> ScanResult:
         res.notes.append("No WordPress fingerprint found on this host.")
         return res
 
-    verdict = classify_version(detected)
-    res.verdict = verdict
-
-    # Build the per-CVE breakdown.
-    for cve, meta in CVE_DB.items():
-        status = verdict
+    # Classify each CVE independently against the detected version.
+    for cve, meta in VULN_DB.items():
+        status = classify_cve(detected, meta)
         res.per_cve[cve] = {
             "title": meta["title"],
             "cwe": meta["cwe"],
@@ -396,32 +479,54 @@ def scan_target(raw_target: str, timeout: int, verify_tls: bool) -> ScanResult:
             "cvss": meta["cvss"],
             "severity": meta["severity"],
             "advisory": meta["advisory"],
+            "auth": meta["auth"],
             "role": meta["role"],
+            "affected": " · ".join(
+                f"{version_str(lo)}–{version_str(hi)}" for lo, hi in meta["affected"]),
+            "fixed": fixed_for(meta),
             "status": status,
         }
+        if status == V_VULN:
+            res.vulnerable_cves.append(cve)
+
+    # Overall verdict = the most severe per-CVE verdict.
+    res.verdict = roll_up(info["status"] for info in res.per_cve.values())
+
+    # Full wp2shell RCE chain requires both of its CVEs to be vulnerable.
+    res.chain_rce = all(
+        res.per_cve.get(c, {}).get("status") == V_VULN for c in WP2SHELL_CHAIN)
 
     # Notes / caveats.
-    if verdict == V_UNKNOWN:
+    if res.verdict == V_UNKNOWN:
         if res.batch_endpoint_exposed:
             res.notes.append(
                 "Core version is hidden but the REST batch endpoint is exposed. "
                 "Confirm the exact WordPress version manually (wp-admin > Updates, "
-                "or `wp core version`) and compare against 6.9.5 / 7.0.2.")
+                "or `wp core version`) and compare against the fixed releases "
+                + ", ".join(all_fixed_releases()) + ".")
         else:
             res.notes.append(
                 "Could not determine the WordPress version from public vectors. "
-                "Verify manually and compare against the fixed releases.")
-    elif verdict == V_VULN:
+                "Verify manually and compare against the fixed releases "
+                + ", ".join(all_fixed_releases()) + ".")
+    elif res.verdict == V_VULN:
+        if res.chain_rce:
+            res.notes.append(
+                "Detected version is exposed to the full wp2shell pre-auth RCE "
+                "chain (CVE-2026-63030 + CVE-2026-60137). Treat any internet-facing "
+                "instance that ran this version as potentially compromised — "
+                "patching closes the route but does not remove a backdoor planted "
+                "beforehand.")
+        else:
+            flagged = ", ".join(res.vulnerable_cves)
+            res.notes.append(
+                f"Detected version falls inside the affected range of {flagged}. "
+                "Patch to the fixed release for this branch and review exposure.")
+    elif res.verdict == V_NOT_AFFECTED:
         res.notes.append(
-            "Detected version falls inside a vulnerable range. Treat any "
-            "internet-facing instance that ran this version as potentially "
-            "compromised — patching closes the route but does not remove a "
-            "backdoor planted beforehand.")
-    elif verdict == V_NOT_AFFECTED:
-        res.notes.append(
-            "Version predates the batch-route weakness (introduced in 6.9), so "
-            "this specific chain does not apply. The install is still outdated; "
-            "update to a current supported release.")
+            "Version predates every tracked core flaw, so these specific CVEs do "
+            "not apply. The install is still outdated; update to a current "
+            "supported release regardless.")
 
     return res
 
@@ -510,7 +615,7 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
 
 
 def _fixed_list_html():
-    return " · ".join(f"<code>{escape(v)}</code>" for v in FIXED_RELEASES)
+    return " · ".join(f"<code>{escape(v)}</code>" for v in all_fixed_releases())
 
 
 def render_html_report(res: ScanResult, sample: bool = False) -> str:
@@ -526,15 +631,18 @@ def render_html_report(res: ScanResult, sample: bool = False) -> str:
     # Verdict quick-facts row.
     dv = escape(res.detected_version or "not disclosed")
     batch = "yes" if res.batch_endpoint_exposed else "not observed"
+    n_vuln = len(res.vulnerable_cves)
+    tracked = len(res.per_cve) or len(VULN_DB)
+    chain_txt = "exposed" if res.chain_rce else "not complete"
     quick = f"""
       <div class="row">
         <div><span>Detected core</span><b>WordPress {dv}</b></div>
-        <div><span>Affected range</span><b>6.9.0–6.9.4 · 7.0.0–7.0.1</b></div>
-        <div><span>Fixed in</span><b>6.9.5 · 7.0.2</b></div>
+        <div><span>CVEs flagged</span><b>{n_vuln} of {tracked} tracked</b></div>
+        <div><span>wp2shell RCE chain</span><b>{chain_txt}</b></div>
         <div><span>REST batch endpoint</span><b>{batch}</b></div>
       </div>"""
 
-    # Findings.
+    # Findings — one card per tracked CVE, with its own affected/fixed ranges.
     findings = []
     for cve, info in res.per_cve.items():
         st = info["status"]
@@ -548,17 +656,19 @@ def render_html_report(res: ScanResult, sample: bool = False) -> str:
             <div class="badge" style="background:{badge_color}">{badge_txt}</div>
           </div>
           <table>
-            <tr><td class="k">Role in chain</td><td class="v" style="white-space:normal">{escape(info['role'])}</td></tr>
+            <tr><td class="k">Summary</td><td class="v" style="white-space:normal">{escape(info['role'])}</td></tr>
             <tr><td class="k">Component</td><td class="v">{escape(info['component'])}</td></tr>
             <tr><td class="k">Weakness</td><td class="v">{escape(info['cwe'])}</td></tr>
-            <tr><td class="k">CVSS</td><td class="v">{escape(str(info['cvss']))}</td></tr>
-            <tr><td class="k">Severity</td><td class="v">{escape(info['severity'])}</td></tr>
+            <tr><td class="k">Access</td><td class="v">{escape(info['auth'])}</td></tr>
+            <tr><td class="k">Severity</td><td class="v">{escape(info['severity'])} (CVSS {escape(str(info['cvss']))})</td></tr>
+            <tr><td class="k">Affected</td><td class="v">{escape(info['affected'])}</td></tr>
+            <tr><td class="k">Fixed in</td><td class="v">{escape(info['fixed'])}</td></tr>
             <tr><td class="k">Advisory</td><td class="v">{escape(info['advisory'])}</td></tr>
           </table>
         </div>""")
     if not findings:
-        findings.append('<div class="notes">No WordPress detected — the wp2shell '
-                        'chain does not apply to this host.</div>')
+        findings.append('<div class="notes">No WordPress detected — the tracked '
+                        'core CVEs do not apply to this host.</div>')
 
     # Evidence table.
     ev_rows = "".join(
@@ -601,22 +711,22 @@ def render_html_report(res: ScanResult, sample: bool = False) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>wp2shell exposure — {escape(host)}</title>
+<title>WordPress core exposure — {escape(host)}</title>
 <style>{REPORT_CSS}</style></head>
 <body><div class="wrap"><div class="sheet">
 {sample_tag}
 <header class="masthead">
   <div class="brand">CyberSentinel Solutions Ltd<small>Offensive Security · Vulnerability Assessment</small></div>
   <div class="doc-meta">
-    Report: <b>wp2shell exposure</b><br>
+    Report: <b>WordPress core exposure</b><br>
     Target: <b>{escape(host)}</b><br>
     Scanned: <b>{escape(scanned)}</b><br>
     Tool: <b>{escape(res.tool)}</b>
   </div>
 </header>
 
-<h1 class="title">WordPress wp2shell exposure assessment</h1>
-<p class="subtitle">Pre-authentication RCE chain — CVE-2026-63030 + CVE-2026-60137</p>
+<h1 class="title">WordPress core vulnerability assessment</h1>
+<p class="subtitle">Recent core CVEs — wp2shell RCE chain (CVE-2026-63030 + CVE-2026-60137) &amp; CVE-2026-3906</p>
 
 <div class="verdict" style="border-left-color:{color}">
   <div class="flag" style="color:{color}">{escape(flag)}</div>
@@ -666,37 +776,50 @@ def render_email(res: ScanResult, report_filename: str | None = None) -> str:
         V_PATCHED: "INFO", V_NOT_AFFECTED: "INFO", V_NOT_WP: "INFO",
     }.get(res.verdict, "REVIEW")
 
-    subject = f"[{sev_word}] wp2shell scan — {host} — {res.verdict}"
+    subject = f"[{sev_word}] WP core scan — {host} — {res.verdict}"
+    fixed_all = " / ".join(all_fixed_releases())
 
     if res.verdict == V_VULN:
-        lead = (f"The scan flagged {host} as VULNERABLE to the wp2shell pre-auth "
-                f"RCE chain (CVE-2026-63030 + CVE-2026-60137).")
-        action = ("Recommend immediate patching to WordPress "
-                  + " / ".join(FIXED_RELEASES) +
-                  " and a compromise assessment, since this instance was exposed "
-                  "while running a vulnerable version.")
+        flagged = ", ".join(res.vulnerable_cves)
+        if res.chain_rce:
+            lead = (f"The scan flagged {host} as VULNERABLE to the wp2shell pre-auth "
+                    f"RCE chain (CVE-2026-63030 + CVE-2026-60137).")
+            action = ("Recommend IMMEDIATE patching to the fixed release for this "
+                      f"branch ({fixed_all}) and a compromise assessment, since this "
+                      "instance was exposed while running a vulnerable version.")
+        else:
+            lead = (f"The scan flagged {host} as VULNERABLE to {flagged}.")
+            action = ("Recommend patching to the fixed release for this branch "
+                      f"({fixed_all}) and reviewing exposure for the flagged CVE(s).")
     elif res.verdict == V_UNKNOWN:
         lead = (f"The scan of {host} was inconclusive — the WordPress core version "
                 f"could not be confirmed from public vectors.")
         action = ("Recommend manual version verification against the fixed releases "
-                  + " / ".join(FIXED_RELEASES) + ".")
+                  f"({fixed_all}).")
     elif res.verdict == V_PATCHED:
         lead = (f"{host} is running a patched WordPress release and is not exposed "
-                f"to the wp2shell chain.")
-        action = "No action required for this CVE chain; keep auto-updates enabled."
+                f"to the tracked core CVEs.")
+        action = "No action required for these CVEs; keep auto-updates enabled."
     elif res.verdict == V_NOT_AFFECTED:
-        lead = (f"{host} runs a WordPress version that predates the flaw; the "
-                f"wp2shell chain does not apply.")
+        lead = (f"{host} runs a WordPress version that predates the tracked flaws; "
+                f"they do not apply.")
         action = "Recommend updating to a current supported release regardless."
     else:
         lead = f"No WordPress fingerprint was found on {host}."
-        action = "No wp2shell exposure; no action required."
+        action = "No exposure to the tracked core CVEs; no action required."
 
     ev_lines = "\n".join(
         f"    - {e['source']}: {e['detail']}"
         + (f"  (v{e['version']})" if e.get("version") else "")
         for e in res.evidence
     ) or "    - none returned"
+
+    # Per-CVE status block.
+    cve_lines = "\n".join(
+        f"  {cve} [{info['status']}] — {info['title']}\n"
+        f"      affected {info['affected']}   fixed {info['fixed']}"
+        for cve, info in res.per_cve.items()
+    ) or "  (no WordPress detected)"
 
     attach = f"\nAttached: {report_filename}" if report_filename else ""
 
@@ -710,13 +833,12 @@ Team,
   Target ............ {res.target}
   WordPress version . {res.detected_version or 'not disclosed'}
   Verdict ........... {res.verdict} — {VERDICT_LABEL.get(res.verdict, '')}
+  wp2shell RCE chain  {'EXPOSED' if res.chain_rce else 'not complete'}
   REST batch route .. {'exposed' if res.batch_endpoint_exposed else 'not observed'}
   Scanned (UTC) ..... {res.scanned_at}
 
-Chain:
-  CVE-2026-63030 — REST API batch-route confusion (entry point, CVSS 7.5, Critical)
-  CVE-2026-60137 — author__not_in WP_Query SQL injection (second link)
-  Affected: 6.9.0-6.9.4 / 7.0.0-7.0.1   Fixed: 6.9.5 / 7.0.2
+Tracked core CVEs:
+{cve_lines}
 
 Recommendation:
   {action}
@@ -780,6 +902,12 @@ def print_summary(res: ScanResult):
     print(f"  WordPress: {res.detected_version or 'not disclosed'}"
           f"   (WP detected: {res.is_wordpress})")
     print(f"  Verdict  : {res.verdict}  —  {VERDICT_LABEL.get(res.verdict,'')}")
+    if res.per_cve:
+        print("  CVEs     :")
+        for cve, info in res.per_cve.items():
+            print(f"     - {cve}: {info['status']}  (fixed {info['fixed']})")
+    if res.chain_rce:
+        print("  Chain    : wp2shell pre-auth RCE chain EXPOSED")
     print(f"  Batch EP : {'exposed' if res.batch_endpoint_exposed else 'not observed'}")
     if res.error:
         print(f"  Error    : {res.error}")
@@ -796,32 +924,44 @@ def print_summary(res: ScanResult):
 # --------------------------------------------------------------------------- #
 
 def build_demo_result() -> ScanResult:
+    """Synthetic result for a 6.9.1 host (exposed to all three tracked CVEs)."""
+    ver = "6.9.1"
+    v = parse_version(ver)
     res = ScanResult(target="https://example.com/",
                      scanned_at=datetime.now(timezone.utc).isoformat())
     res.is_wordpress = True
-    res.detected_version = "7.0.1"
-    res.verdict = V_VULN
+    res.detected_version = ver
     res.batch_endpoint_exposed = True
     res.evidence = [
         {"source": "generator meta tag (homepage)",
-         "detail": 'meta generator = "WordPress 7.0.1"', "version": "7.0.1"},
-        {"source": "/readme.html", "detail": "Version 7.0.1", "version": "7.0.1"},
+         "detail": f'meta generator = "WordPress {ver}"', "version": ver},
+        {"source": "/readme.html", "detail": f"Version {ver}", "version": ver},
         {"source": "/wp-json/ (REST root)",
          "detail": "batch/v1 namespace is registered (REST batch endpoint reachable)",
          "version": None},
     ]
-    for cve, meta in CVE_DB.items():
+    # Run the real per-CVE classifier so the demo stays consistent with the DB.
+    for cve, meta in VULN_DB.items():
+        status = classify_cve(v, meta)
         res.per_cve[cve] = {
             "title": meta["title"], "cwe": meta["cwe"],
             "component": meta["component"], "cvss": meta["cvss"],
             "severity": meta["severity"], "advisory": meta["advisory"],
-            "role": meta["role"], "status": V_VULN,
+            "auth": meta["auth"], "role": meta["role"],
+            "affected": " · ".join(
+                f"{version_str(lo)}–{version_str(hi)}" for lo, hi in meta["affected"]),
+            "fixed": fixed_for(meta), "status": status,
         }
+        if status == V_VULN:
+            res.vulnerable_cves.append(cve)
+    res.verdict = roll_up(info["status"] for info in res.per_cve.values())
+    res.chain_rce = all(
+        res.per_cve.get(c, {}).get("status") == V_VULN for c in WP2SHELL_CHAIN)
     res.notes = [
-        "Detected version falls inside a vulnerable range. Treat any "
-        "internet-facing instance that ran this version as potentially "
-        "compromised — patching closes the route but does not remove a "
-        "backdoor planted beforehand.",
+        "Detected version is exposed to the full wp2shell pre-auth RCE chain "
+        "(CVE-2026-63030 + CVE-2026-60137). Treat any internet-facing instance "
+        "that ran this version as potentially compromised — patching closes the "
+        "route but does not remove a backdoor planted beforehand.",
     ]
     return res
 
@@ -833,8 +973,9 @@ def build_demo_result() -> ScanResult:
 def build_arg_parser():
     p = argparse.ArgumentParser(
         prog="wp2shell_scanner.py",
-        description="CSSLTD detection scanner for WordPress wp2shell "
-                    "(CVE-2026-63030 / CVE-2026-60137). Detection-only.",
+        description="CSSLTD detection scanner for recent WordPress core CVEs "
+                    "(wp2shell chain CVE-2026-63030 / CVE-2026-60137, plus "
+                    "CVE-2026-3906). Detection-only.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n"
                "  wp2shell_scanner.py -t https://site.example --authorized\n"

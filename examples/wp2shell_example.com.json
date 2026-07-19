@@ -1,43 +1,68 @@
 {
   "target": "https://example.com/",
-  "scanned_at": "2026-07-18T17:41:36.836128+00:00",
-  "tool": "CSSLTD wp2shell-scanner v1.0",
+  "scanned_at": "2026-07-19T02:50:59.674959+00:00",
+  "tool": "CSSLTD WordPress core-vuln scanner v2.0",
   "is_wordpress": true,
-  "detected_version": "7.0.1",
+  "detected_version": "6.9.1",
   "verdict": "VULNERABLE",
   "batch_endpoint_exposed": true,
+  "chain_rce": true,
+  "vulnerable_cves": [
+    "CVE-2026-63030",
+    "CVE-2026-60137",
+    "CVE-2026-3906"
+  ],
   "per_cve": {
     "CVE-2026-63030": {
-      "title": "wp2shell \u2014 REST API batch-route confusion",
+      "title": "wp2shell \u2014 REST API batch-route confusion \u2192 RCE",
       "cwe": "CWE-436 (Interpretation Conflict)",
       "component": "WP_REST_Server::serve_batch_request_v1()  \u00b7  /wp-json/batch/v1",
-      "cvss": "7.5",
+      "cvss": "see advisory",
       "severity": "Critical",
       "advisory": "GHSA-ff9f-jf42-662q",
-      "role": "Entry point of the chain. A route-confusion flaw in the REST batch endpoint lets an unauthenticated request reach an internal query path.",
+      "auth": "Unauthenticated",
+      "role": "Entry point of the wp2shell chain. A route-confusion flaw in the REST batch endpoint lets an unauthenticated request reach an internal query path; chained with CVE-2026-60137 it yields unauthenticated remote code execution.",
+      "affected": "6.9.0\u20136.9.4 \u00b7 7.0.0\u20137.0.1",
+      "fixed": "6.9.5 / 7.0.2",
       "status": "VULNERABLE"
     },
     "CVE-2026-60137": {
       "title": "author__not_in WP_Query SQL injection",
       "cwe": "CWE-89 (SQL Injection)",
       "component": "WP_Query \u2014 author__not_in parameter",
-      "cvss": "chained (no standalone score published)",
-      "severity": "Critical (as part of the chain)",
-      "advisory": "\u2014",
-      "role": "Second link. Unsanitised input in author__not_in reaches the database query; combined with CVE-2026-63030 this produces unauthenticated remote code execution.",
+      "cvss": "see advisory",
+      "severity": "High",
+      "advisory": "GHSA-ff9f-jf42-662q",
+      "auth": "Unauthenticated",
+      "role": "Second link of the wp2shell chain. Unsanitised input in author__not_in reaches the database query. Present since 6.8 \u2014 the 6.8 branch is exposed to this SQL injection on its own, but not to the full RCE chain (which also needs CVE-2026-63030).",
+      "affected": "6.8.0\u20136.8.5 \u00b7 6.9.0\u20136.9.4 \u00b7 7.0.0\u20137.0.1",
+      "fixed": "6.8.6 / 6.9.5 / 7.0.2",
+      "status": "VULNERABLE"
+    },
+    "CVE-2026-3906": {
+      "title": "Notes REST API \u2014 missing authorization (arbitrary note creation)",
+      "cwe": "CWE-862 (Missing Authorization)",
+      "component": "REST comments controller \u2014 create_item_permissions_check() (Notes)",
+      "cvss": "4.3",
+      "severity": "Moderate",
+      "advisory": "GHSA-6x83-fcf5-r65g",
+      "auth": "Authenticated (Subscriber+)",
+      "role": "The Notes feature (added in 6.9) skipped the edit_post permission check in its REST endpoint, letting a Subscriber create notes on any post \u2014 including private and other users' posts. Only fully fixed in 6.9.4 (partial fixes in 6.9.2/6.9.3).",
+      "affected": "6.9.0\u20136.9.3",
+      "fixed": "6.9.4",
       "status": "VULNERABLE"
     }
   },
   "evidence": [
     {
       "source": "generator meta tag (homepage)",
-      "detail": "meta generator = \"WordPress 7.0.1\"",
-      "version": "7.0.1"
+      "detail": "meta generator = \"WordPress 6.9.1\"",
+      "version": "6.9.1"
     },
     {
       "source": "/readme.html",
-      "detail": "Version 7.0.1",
-      "version": "7.0.1"
+      "detail": "Version 6.9.1",
+      "version": "6.9.1"
     },
     {
       "source": "/wp-json/ (REST root)",
@@ -46,7 +71,7 @@
     }
   ],
   "notes": [
-    "Detected version falls inside a vulnerable range. Treat any internet-facing instance that ran this version as potentially compromised \u2014 patching closes the route but does not remove a backdoor planted beforehand."
+    "Detected version is exposed to the full wp2shell pre-auth RCE chain (CVE-2026-63030 + CVE-2026-60137). Treat any internet-facing instance that ran this version as potentially compromised \u2014 patching closes the route but does not remove a backdoor planted beforehand."
   ],
   "error": null
 }
