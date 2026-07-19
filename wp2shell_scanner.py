@@ -14,7 +14,7 @@ Tracked CVEs (branch-aware, per-CVE verdicts):
                     affected 6.8.0-6.8.5 / 6.9.0-6.9.4 / 7.0.0-7.0.1
                     fixed 6.8.6 / 6.9.5 / 7.0.2
     CVE-2026-3906   Notes REST API missing authorization (Subscriber+ can
-                    create arbitrary notes)   affected 6.9.0-6.9.3  fixed 6.9.4
+                    create arbitrary notes)   affected 6.9.0-6.9.1  fixed 6.9.2
 
 Scope: WordPress CORE only. Plugin/theme CVEs (the bulk of the WPScan /
 Patchstack catalogue) need a live curated feed and per-plugin enumeration and
@@ -44,7 +44,7 @@ AUTHORISED USE ONLY
     an identifying User-Agent so blue teams can attribute the traffic.
 
 Author : CSSLTD Offensive Security
-License: Internal / client-engagement use.
+License: MIT (see LICENSE).
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
 # --------------------------------------------------------------------------- #
 
 TOOL_NAME = "CSSLTD WordPress core-vuln scanner"
-TOOL_VERSION = "2.1"
+TOOL_VERSION = "2.2"
 CSSLTD_CONTACT = "ops@cyberssl.co.uk"          # <-- edit to your intake address
 CSSLTD_SITE = "https://cyberssl.co.uk"
 USER_AGENT = f"CSSLTD-wp-core-scanner/{TOOL_VERSION} (+{CSSLTD_SITE})"
@@ -123,9 +123,9 @@ VULN_DB = {
         "title": "author__not_in WP_Query SQL injection",
         "cwe": "CWE-89 (SQL Injection)",
         "component": "WP_Query — author__not_in parameter",
-        "cvss": "see advisory",
-        "severity": "High",
-        "advisory": "GHSA-ff9f-jf42-662q",
+        "cvss": "5.9 (WPScan CNA, Medium)",
+        "severity": "Moderate standalone (Critical as part of the wp2shell RCE chain)",
+        "advisory": "GHSA-fpp7-x2x2-2mjf",
         "auth": "Unauthenticated",
         "role": ("Second link of the wp2shell chain. Unsanitised input in "
                  "author__not_in reaches the database query. Present since 6.8 — "
@@ -149,9 +149,9 @@ VULN_DB = {
         "role": ("The Notes feature (added in 6.9) skipped the edit_post "
                  "permission check in its REST endpoint, letting a Subscriber "
                  "create notes on any post — including private and other users' "
-                 "posts. Only fully fixed in 6.9.4 (partial fixes in 6.9.2/6.9.3)."),
-        "affected": [((6, 9, 0), (6, 9, 3))],
-        "fixed": ["6.9.4"],
+                 "posts. Fixed in 6.9.2 (changeset 61888)."),
+        "affected": [((6, 9, 0), (6, 9, 1))],
+        "fixed": ["6.9.2"],
         "first_affected": (6, 9, 0),   # Notes feature introduced in 6.9
         "chain": None,
     },
@@ -161,8 +161,10 @@ VULN_DB = {
 WP2SHELL_CHAIN = ("CVE-2026-63030", "CVE-2026-60137")
 
 REFERENCES = [
-    ("WordPress GitHub Security Advisory — wp2shell (GHSA-ff9f-jf42-662q)",
-     "https://github.com/advisories/GHSA-ff9f-jf42-662q"),
+    ("WordPress GitHub Security Advisory — wp2shell RCE chain (GHSA-ff9f-jf42-662q)",
+     "https://github.com/WordPress/wordpress-develop/security/advisories/GHSA-ff9f-jf42-662q"),
+    ("WordPress GitHub Security Advisory — author__not_in SQLi (GHSA-fpp7-x2x2-2mjf)",
+     "https://github.com/WordPress/wordpress-develop/security/advisories/GHSA-fpp7-x2x2-2mjf"),
     ("WordPress GitHub Security Advisory — Notes REST API (GHSA-6x83-fcf5-r65g)",
      "https://github.com/advisories/GHSA-6x83-fcf5-r65g"),
     ("NVD — CVE-2026-63030 (scores: 9.8 WPScan CNA / 7.5 CISA-ADP)",
@@ -196,8 +198,8 @@ VERDICT_COLOR = {
 
 VERDICT_LABEL = {
     V_VULN: "Vulnerable — patch immediately",
-    V_PATCHED: "Patched — not exposed to this chain",
-    V_NOT_AFFECTED: "Not affected (version predates the flaw)",
+    V_PATCHED: "Patched — not exposed to the tracked CVEs",
+    V_NOT_AFFECTED: "Not affected (version predates the earliest tracked flaw)",
     V_UNKNOWN: "Inconclusive — manual verification required",
     V_NOT_WP: "WordPress not detected",
 }
@@ -287,6 +289,21 @@ def all_fixed_releases():
     return [f for f, _ in sorted(seen.items(), key=lambda kv: kv[1])]
 
 
+def recommended_releases():
+    """Fixed releases that clear EVERY tracked CVE (safe upgrade targets).
+
+    A per-CVE fix is not necessarily safe overall: 6.9.4 fixes CVE-2026-3906
+    but is still vulnerable to the wp2shell chain (only closed in 6.9.5). This
+    returns only releases that are non-vulnerable to all tracked CVEs.
+    """
+    out = []
+    for f in all_fixed_releases():
+        v = parse_version(f)
+        if v and all(classify_cve(v, m) != V_VULN for m in VULN_DB.values()):
+            out.append(f)
+    return out
+
+
 # --------------------------------------------------------------------------- #
 #  HTTP session                                                               #
 # --------------------------------------------------------------------------- #
@@ -307,11 +324,19 @@ def build_session(timeout: int, verify_tls: bool) -> requests.Session:
     return s
 
 
-def _get(session, url, timeout, **kw):
+def _get(session, url, timeout, allow_redirects=True, scope_host=None, **kw):
     try:
-        return session.get(url, timeout=timeout, allow_redirects=True, **kw)
+        r = session.get(url, timeout=timeout,
+                        allow_redirects=allow_redirects, **kw)
     except requests.RequestException as exc:
         return exc
+    # If auto-following redirects, discard any response that ended up off-scope
+    # so vector probes can never read data from an unauthorised host.
+    if scope_host and allow_redirects:
+        final = urlparse(getattr(r, "url", url) or url).netloc
+        if final and not same_scope(scope_host, final):
+            return None
+    return r
 
 
 # --------------------------------------------------------------------------- #
@@ -326,7 +351,7 @@ class Evidence:
 
 
 def detect_from_html(session, base, timeout, evidence):
-    r = _get(session, base, timeout)
+    r = _get(session, base, timeout, scope_host=urlparse(base).netloc)
     if isinstance(r, Exception) or not getattr(r, "ok", False):
         return None
     body = r.text or ""
@@ -352,14 +377,23 @@ def detect_from_html(session, base, timeout, evidence):
 
 def detect_from_readme(session, base, timeout, evidence):
     url = urljoin(base, "readme.html")
-    r = _get(session, url, timeout)
+    r = _get(session, url, timeout, scope_host=urlparse(base).netloc)
     if isinstance(r, Exception) or not getattr(r, "ok", False):
         return None
-    m = re.search(r"Version\s*([\d.]+(?:[-+][0-9A-Za-z.]+)?)",
-                  r.text or "", re.IGNORECASE)
+    text = r.text or ""
+    # Guard against unrelated readme/API pages: a WordPress readme.html always
+    # names WordPress. Without that marker, a stray "Version x.y" is not proof.
+    if not re.search(r"\bwordpress\b", text, re.IGNORECASE):
+        return None
+    # Prefer the version that sits right after a "WordPress" mention.
+    m = re.search(r"WordPress[^<]{0,40}?Version\s*"
+                  r"([\d.]+(?:[-+][0-9A-Za-z.]+)?)", text, re.IGNORECASE)
+    if not m:
+        m = re.search(r"Version\s*([\d.]+(?:[-+][0-9A-Za-z.]+)?)",
+                      text, re.IGNORECASE)
     if m:
         ver = m.group(1)
-        evidence.append(Evidence("/readme.html", f"Version {ver}", ver))
+        evidence.append(Evidence("/readme.html", f"WordPress Version {ver}", ver))
         return parse_version(ver)
     return None
 
@@ -367,7 +401,7 @@ def detect_from_readme(session, base, timeout, evidence):
 def detect_from_feed(session, base, timeout, evidence):
     for path in ("feed/", "?feed=rss2", "comments/feed/"):
         url = urljoin(base, path)
-        r = _get(session, url, timeout)
+        r = _get(session, url, timeout, scope_host=urlparse(base).netloc)
         if isinstance(r, Exception) or not getattr(r, "ok", False):
             continue
         m = re.search(r"<generator>\s*https?://wordpress\.org/\?v="
@@ -382,7 +416,7 @@ def detect_from_feed(session, base, timeout, evidence):
 
 def detect_from_opml(session, base, timeout, evidence):
     url = urljoin(base, "wp-links-opml.php")
-    r = _get(session, url, timeout)
+    r = _get(session, url, timeout, scope_host=urlparse(base).netloc)
     if isinstance(r, Exception) or not getattr(r, "ok", False):
         return None
     m = re.search(r"generator=\"WordPress/([\d.]+(?:[-+][0-9A-Za-z.]+)?)\"",
@@ -403,14 +437,14 @@ def probe_rest_surface(session, base, timeout, evidence):
     and does NOT confirm the endpoint is actually reachable through any WAF —
     it only observes whether WordPress advertises the batch/v1 namespace.
 
-    is_wp is set only when the response is a WordPress-shaped REST index (a JSON
-    object carrying 'namespaces'/'routes', or a 'wp/v2' route). A bare 200/401/
-    403 is NOT treated as proof of WordPress, to avoid false positives on
-    unrelated hosts.
+    is_wp is set only when the response advertises a WordPress-SPECIFIC namespace
+    or route (wp/v2, oembed/1.0, /wp/…, /oembed/…). A generic JSON API such as
+    {"namespaces":["api/v1"],"routes":{…}} is NOT treated as WordPress, and a
+    bare 200/401/403 is never proof on its own — both avoid false positives.
     """
     result = {"is_wp": False, "batch_advertised": False}
     url = urljoin(base, "wp-json/")
-    r = _get(session, url, timeout)
+    r = _get(session, url, timeout, scope_host=urlparse(base).netloc)
     if isinstance(r, Exception) or r is None:
         return result
     try:
@@ -420,14 +454,11 @@ def probe_rest_surface(session, base, timeout, evidence):
     if not isinstance(data, dict):
         return result
 
-    namespaces = data.get("namespaces") or []
-    routes = data.get("routes") or {}
-    looks_like_wp_rest = (
-        isinstance(namespaces, list) and (namespaces or "namespaces" in data)
-        and isinstance(routes, dict)
-    ) or any(str(ns).startswith("wp/") for ns in namespaces) or any(
-        str(rt).startswith("/wp/") for rt in routes)
-    if not looks_like_wp_rest:
+    namespaces = [str(ns) for ns in (data.get("namespaces") or [])]
+    routes = {str(rt) for rt in (data.get("routes") or {})}
+    wp_ns = any(ns == "oembed/1.0" or ns.startswith("wp/") for ns in namespaces)
+    wp_rt = any(rt.startswith("/wp/") or rt.startswith("/oembed/") for rt in routes)
+    if not (wp_ns or wp_rt):
         return result
 
     result["is_wp"] = True
@@ -472,17 +503,21 @@ class ScanResult:
 #  Scan orchestration                                                         #
 # --------------------------------------------------------------------------- #
 
-def registrable_domain(netloc: str) -> str:
-    """Best-effort registrable domain (last two labels), for scope comparison."""
-    netloc = (netloc or "").split("@")[-1].split(":")[0].lower().rstrip(".")
-    labels = [l for l in netloc.split(".") if l]
-    return ".".join(labels[-2:]) if len(labels) >= 2 else netloc
+def _norm_host(netloc: str) -> str:
+    """Lowercase hostname without userinfo, port, trailing dot, or leading www."""
+    host = (netloc or "").split("@")[-1].split(":")[0].lower().rstrip(".")
+    return host[4:] if host.startswith("www.") else host
 
 
 def same_scope(host_a: str, host_b: str) -> bool:
-    """True if two hosts share a registrable domain (www/subdomain-tolerant)."""
-    return bool(host_a) and bool(host_b) and \
-        registrable_domain(host_a) == registrable_domain(host_b)
+    """True only if two hosts are the same hostname (www-tolerant).
+
+    Deliberately strict — a registrable-domain / last-two-labels comparison
+    would wrongly treat client.co.uk and evil.co.uk as one scope. Any other
+    subdomain or domain is treated as OUT of scope.
+    """
+    a, b = _norm_host(host_a), _norm_host(host_b)
+    return bool(a) and a == b
 
 
 def normalise_target(raw: str) -> str:
@@ -501,22 +536,37 @@ def scan_target(raw_target: str, timeout: int, verify_tls: bool) -> ScanResult:
 
     res = ScanResult(target=base, scanned_at=datetime.now(timezone.utc).isoformat())
 
-    # Reachability check.
-    root = _get(session, base, timeout)
-    if isinstance(root, Exception):
-        res.error = f"target unreachable: {root.__class__.__name__}: {root}"
-        res.verdict = V_UNKNOWN
-        res.evidence = [asdict(e) for e in evidence]
-        return res
-
-    # Scope guard: if redirects landed on a different registrable domain, warn —
-    # results below describe wherever we ended up, not necessarily the target.
-    final_host = urlparse(getattr(root, "url", base) or base).netloc
-    if final_host and not same_scope(host, final_host):
-        res.notes.append(
-            f"Redirect left the authorised host ({host} -> {final_host}). "
-            "Findings describe the redirect target; confirm this host is in "
-            "scope before acting on them.")
+    # Reachability + scope resolution. Redirects are followed MANUALLY, one hop
+    # at a time, and only while they stay on the authorised host — so we never
+    # send a request to (or scan) a host the caller did not authorise.
+    for _ in range(6):
+        root = _get(session, base, timeout, allow_redirects=False)
+        if isinstance(root, Exception):
+            res.error = f"target unreachable: {root.__class__.__name__}: {root}"
+            res.verdict = V_UNKNOWN
+            res.evidence = [asdict(e) for e in evidence]
+            return res
+        status = getattr(root, "status_code", 0)
+        location = (getattr(root, "headers", {}) or {}).get("location") \
+            or (getattr(root, "headers", {}) or {}).get("Location")
+        if status in (301, 302, 303, 307, 308) and location:
+            dest = urljoin(base, location)
+            dest_host = urlparse(dest).netloc
+            if not same_scope(host, dest_host):
+                # Cross-host redirect: refuse to follow, do not scan the target.
+                res.error = (f"cross-host redirect blocked ({host} -> "
+                             f"{dest_host}); target not scanned")
+                res.verdict = V_UNKNOWN
+                res.notes.append(
+                    f"{host} redirects off the authorised host to {dest_host}. "
+                    "The scanner refused to follow it and scanned nothing — "
+                    "confirm the correct in-scope URL and re-run.")
+                res.evidence = [asdict(e) for e in evidence]
+                return res
+            base = dest if dest.endswith("/") else dest + "/"
+            host = urlparse(base).netloc
+            continue
+        break  # 2xx/4xx/5xx on an in-scope host — proceed.
 
     # Run every passive version vector; each appends its own evidence entries.
     for fn in (detect_from_html, detect_from_readme,
@@ -601,18 +651,18 @@ def scan_target(raw_target: str, timeout: int, verify_tls: bool) -> ScanResult:
                 "A pre-release build was detected (" + ", ".join(prerelease_raws) +
                 "). Beta/RC builds cannot be mapped to a fixed-release verdict "
                 "reliably; confirm the exact build and compare against the fixed "
-                "releases " + ", ".join(all_fixed_releases()) + ".")
+                "releases " + ", ".join(recommended_releases()) + ".")
         elif res.batch_namespace_advertised:
             res.notes.append(
                 "Core version is hidden but the batch/v1 namespace is advertised in "
                 "the REST index. Confirm the exact WordPress version manually "
                 "(wp-admin > Updates, or `wp core version`) and compare against the "
-                "fixed releases " + ", ".join(all_fixed_releases()) + ".")
+                "fixed releases " + ", ".join(recommended_releases()) + ".")
         else:
             res.notes.append(
                 "Could not determine the WordPress version from public vectors. "
                 "Verify manually and compare against the fixed releases "
-                + ", ".join(all_fixed_releases()) + ".")
+                + ", ".join(recommended_releases()) + ".")
     elif res.verdict == V_VULN:
         if res.chain_rce:
             res.notes.append(
@@ -719,7 +769,7 @@ footer.foot{border-top:1px solid var(--line);padding:16px 32px;font-size:11px;
 
 
 def _fixed_list_html():
-    return " · ".join(f"<code>{escape(v)}</code>" for v in all_fixed_releases())
+    return " · ".join(f"<code>{escape(v)}</code>" for v in recommended_releases())
 
 
 def render_html_report(res: ScanResult, sample: bool = False) -> str:
@@ -795,7 +845,7 @@ def render_html_report(res: ScanResult, sample: bool = False) -> str:
         <li><b>Take a verified backup first.</b>
             <p>Back up the database and the full file tree before making changes, so you can restore and later forensically compare.</p></li>
         <li><b>Update WordPress Core.</b>
-            <p>Move to a fixed release — {_fixed_list_html()} or later on the matching branch. Then confirm with <code>wp core version</code> or <b>Dashboard → Updates</b>.</p></li>
+            <p>Move to a release that clears every tracked CVE — {_fixed_list_html()} — or later on the matching branch. Note the 6.9 branch is only clear at <code>6.9.5+</code>: 6.9.2 fixes CVE-2026-3906 and 6.9.4 is still current for it, but both remain exposed to the wp2shell chain. Then confirm with <code>wp core version</code> or <b>Dashboard → Updates</b>.</p></li>
         <li><b>Confirm the site still works.</b>
             <p>Verify the public site and admin load correctly after the update; check for plugin/theme conflicts.</p></li>
         <li><b>Assume compromise if it was exposed while vulnerable.</b>
@@ -881,7 +931,7 @@ def render_email(res: ScanResult, report_filename: str | None = None) -> str:
     }.get(res.verdict, "REVIEW")
 
     subject = f"[{sev_word}] WP core scan — {host} — {res.verdict}"
-    fixed_all = " / ".join(all_fixed_releases())
+    fixed_all = " / ".join(recommended_releases())
 
     if res.verdict == V_VULN:
         flagged = ", ".join(res.vulnerable_cves)

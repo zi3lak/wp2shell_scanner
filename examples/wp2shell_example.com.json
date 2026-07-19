@@ -1,7 +1,7 @@
 {
   "target": "https://example.com/",
-  "scanned_at": "2026-07-19T03:04:52.700106+00:00",
-  "tool": "CSSLTD WordPress core-vuln scanner v2.1",
+  "scanned_at": "2026-07-19T06:40:44.174228+00:00",
+  "tool": "CSSLTD WordPress core-vuln scanner v2.2",
   "is_wordpress": true,
   "detected_version": "6.9.1",
   "detected_versions": [
@@ -35,9 +35,9 @@
       "title": "author__not_in WP_Query SQL injection",
       "cwe": "CWE-89 (SQL Injection)",
       "component": "WP_Query \u2014 author__not_in parameter",
-      "cvss": "see advisory",
-      "severity": "High",
-      "advisory": "GHSA-ff9f-jf42-662q",
+      "cvss": "5.9 (WPScan CNA, Medium)",
+      "severity": "Moderate standalone (Critical as part of the wp2shell RCE chain)",
+      "advisory": "GHSA-fpp7-x2x2-2mjf",
       "auth": "Unauthenticated",
       "role": "Second link of the wp2shell chain. Unsanitised input in author__not_in reaches the database query. Present since 6.8 \u2014 the 6.8 branch is exposed to this SQL injection on its own, but not to the full RCE chain (which also needs CVE-2026-63030).",
       "affected": "6.8.0\u20136.8.5 \u00b7 6.9.0\u20136.9.4 \u00b7 7.0.0\u20137.0.1",
@@ -52,9 +52,9 @@
       "severity": "Moderate",
       "advisory": "GHSA-6x83-fcf5-r65g",
       "auth": "Authenticated (Subscriber+)",
-      "role": "The Notes feature (added in 6.9) skipped the edit_post permission check in its REST endpoint, letting a Subscriber create notes on any post \u2014 including private and other users' posts. Only fully fixed in 6.9.4 (partial fixes in 6.9.2/6.9.3).",
-      "affected": "6.9.0\u20136.9.3",
-      "fixed": "6.9.4",
+      "role": "The Notes feature (added in 6.9) skipped the edit_post permission check in its REST endpoint, letting a Subscriber create notes on any post \u2014 including private and other users' posts. Fixed in 6.9.2 (changeset 61888).",
+      "affected": "6.9.0\u20136.9.1",
+      "fixed": "6.9.2",
       "status": "VULNERABLE"
     }
   },

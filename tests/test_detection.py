@@ -16,12 +16,13 @@ import wp2shell_scanner as w  # noqa: E402
 
 
 class FakeResp:
-    def __init__(self, url, status=200, text="", data=None):
+    def __init__(self, url, status=200, text="", data=None, headers=None):
         self.url = url
         self.status_code = status
         self.ok = 200 <= status < 400
         self.text = text
         self._data = data
+        self.headers = headers or {}
 
     def json(self):
         if self._data is None:
@@ -126,7 +127,7 @@ def main():
     # 6) Conflicting versions — homepage 7.0.2 vs readme 6.9.4 → UNKNOWN.
     r = scenario({
         "HOME": {"text": meta_html("7.0.2")},
-        "readme.html": {"text": "Version 6.9.4"},
+        "readme.html": {"text": "<h1>WordPress</h1><br /> Version 6.9.4"},
         "wp-json": {"data": WP_REST},
     })
     check("conflict flagged", r.version_conflict is True)
@@ -140,12 +141,50 @@ def main():
     check("prerelease flagged", r.prerelease is True)
     check("prerelease verdict UNKNOWN", r.verdict == w.V_UNKNOWN)
 
-    # 8) Off-scope redirect produces a warning note.
-    routes = {"HOME": {"text": meta_html("7.0.1")}, "wp-json": {"data": WP_REST_BATCH}}
-    w.build_session = lambda timeout, verify_tls: _RedirectSession(routes)
+    # 8) Cross-host redirect is BLOCKED — verdict UNKNOWN, target not scanned.
+    w.build_session = lambda timeout, verify_tls: FakeSession({
+        "HOME": {"status": 302,
+                 "headers": {"location": "https://evil.other/"}},
+    })
     r = w.scan_target("https://site.example", timeout=5, verify_tls=True)
-    check("off-scope redirect noted",
-          any("Redirect left the authorised host" in n for n in r.notes))
+    check("cross-host redirect -> UNKNOWN", r.verdict == w.V_UNKNOWN)
+    check("cross-host redirect blocked (error set)",
+          bool(r.error) and "redirect blocked" in r.error)
+    check("cross-host redirect not flagged WordPress", r.is_wordpress is False)
+
+    # 9) CVE-2026-3906 range: vulnerable at 6.9.1, patched at 6.9.2.
+    r = scenario({"HOME": {"text": meta_html("6.9.1")}, "wp-json": {"data": WP_REST}})
+    check("6.9.1 3906 VULNERABLE",
+          r.per_cve["CVE-2026-3906"]["status"] == w.V_VULN)
+    r = scenario({"HOME": {"text": meta_html("6.9.2")}, "wp-json": {"data": WP_REST}})
+    check("6.9.2 3906 not vulnerable",
+          r.per_cve["CVE-2026-3906"]["status"] != w.V_VULN)
+
+    # 10) readme.html false positive — "API Version 6.9.4" with no WordPress marker.
+    r = scenario({
+        "HOME": {"text": "<html><body>plain site</body></html>"},
+        "readme.html": {"text": "<h1>My API</h1> API Version 6.9.4"},
+        "wp-json": {"status": 404, "text": "nope"},
+    })
+    check("readme without WordPress marker -> NOT_WORDPRESS",
+          r.verdict == w.V_NOT_WP)
+
+    # 11) REST false positive — a non-WordPress JSON API.
+    r = scenario({
+        "HOME": {"text": "<html><body>plain site</body></html>"},
+        "wp-json": {"data": {"namespaces": ["api/v1"], "routes": {"/api/v1": {}}}},
+    })
+    check("non-WP REST API -> NOT_WORDPRESS", r.verdict == w.V_NOT_WP)
+
+    # 12) Scope helper: same registrable domain must NOT mean same scope.
+    check("same_scope client vs evil (co.uk) is False",
+          w.same_scope("client.co.uk", "evil.co.uk") is False)
+    check("same_scope www-tolerant is True",
+          w.same_scope("example.com", "www.example.com") is True)
+
+    # 13) recommended_releases never includes the unsafe 6.9.4 / 6.9.2.
+    check("recommended releases are the safe set",
+          w.recommended_releases() == ["6.8.6", "6.9.5", "7.0.2"])
 
     print()
     if FAILS:
@@ -153,13 +192,6 @@ def main():
         return 1
     print("all detection-logic tests passed")
     return 0
-
-
-class _RedirectSession(FakeSession):
-    def get(self, url, timeout=None, allow_redirects=True, **kw):
-        r = super().get(url, timeout, allow_redirects, **kw)
-        r.url = url.replace("site.example", "evil.other")  # landed off-scope
-        return r
 
 
 if __name__ == "__main__":
